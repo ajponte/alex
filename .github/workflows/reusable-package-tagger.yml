@@ -1,0 +1,35 @@
+name: Reusable Package Tagger Lambda Workflow
+
+on:
+  workflow_call:
+
+jobs:
+  package-tagger-lambda:
+    name: Package Tagger Lambda Artifact
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Python & uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: "latest"
+          enable-cache: true
+          cache-dependency-glob: "backend/uv.lock"
+
+      - name: Install Backend Dependencies
+        working-directory: backend
+        run: uv sync
+
+      - name: Package Tagger Lambda Function
+        working-directory: backend
+        run: uv run tagger/package_docker.py || true
+
+      - name: Upload Tagger Lambda Package Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: lambda-package-tagger
+          path: backend/tagger/tagger_lambda.zip
+          retention-days: 7

@@ -21,7 +21,37 @@ jobs:
     uses: ./.github/workflows/reusable-lint-test.yml
     secrets: inherit
 
-  build-artifacts:
-    name: Build & Package Artifacts
-    uses: ./.github/workflows/reusable-build-artifacts.yml
+  build-frontend:
+    name: Build Frontend Static Export
+    uses: ./.github/workflows/reusable-build-frontend.yml
+    secrets: inherit
+
+  package-planner:
+    name: Package Planner Lambda
+    uses: ./.github/workflows/reusable-package-planner.yml
+    secrets: inherit
+
+  package-tagger:
+    name: Package Tagger Lambda
+    uses: ./.github/workflows/reusable-package-tagger.yml
+    secrets: inherit
+
+  package-reporter:
+    name: Package Reporter Lambda
+    uses: ./.github/workflows/reusable-package-reporter.yml
+    secrets: inherit
+
+  package-charter:
+    name: Package Charter Lambda
+    uses: ./.github/workflows/reusable-package-charter.yml
+    secrets: inherit
+
+  package-retirement:
+    name: Package Retirement Lambda
+    uses: ./.github/workflows/reusable-package-retirement.yml
+    secrets: inherit
+
+  package-scheduler:
+    name: Package Scheduler Lambda
+    uses: ./.github/workflows/reusable-package-scheduler.yml
     secrets: inherit

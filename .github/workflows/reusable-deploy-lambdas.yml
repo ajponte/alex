@@ -42,11 +42,51 @@ jobs:
           aws-region: ${{ secrets.AWS_REGION || 'us-east-1' }}
           role-session-name: Alex-CD-Lambda-Deploy
 
-      - name: Download Lambda Agent Packages Artifact
+      - name: Download Planner Lambda Package Artifact
         uses: actions/download-artifact@v4
         with:
-          name: lambda-agent-packages
-          path: backend/
+          name: lambda-package-planner
+          path: backend/planner
+          run-id: ${{ inputs.run_id || github.event.workflow_run.id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Download Tagger Lambda Package Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: lambda-package-tagger
+          path: backend/tagger
+          run-id: ${{ inputs.run_id || github.event.workflow_run.id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Download Reporter Lambda Package Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: lambda-package-reporter
+          path: backend/reporter
+          run-id: ${{ inputs.run_id || github.event.workflow_run.id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Download Charter Lambda Package Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: lambda-package-charter
+          path: backend/charter
+          run-id: ${{ inputs.run_id || github.event.workflow_run.id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Download Retirement Lambda Package Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: lambda-package-retirement
+          path: backend/retirement
+          run-id: ${{ inputs.run_id || github.event.workflow_run.id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Download Scheduler Lambda Package Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: lambda-package-scheduler
+          path: backend/scheduler
           run-id: ${{ inputs.run_id || github.event.workflow_run.id }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
