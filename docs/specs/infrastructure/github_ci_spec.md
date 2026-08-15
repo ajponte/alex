@@ -6,6 +6,7 @@
 - [.github/workflows/ci.yml](file:///Users/aponte/personal_workspace/agent_engineering_production_udemy/projects/alex/.github/workflows/ci.yml)
 - [backend/pyproject.toml](file:///Users/aponte/personal_workspace/agent_engineering_production_udemy/projects/alex/backend/pyproject.toml)
 - [frontend/package.json](file:///Users/aponte/personal_workspace/agent_engineering_production_udemy/projects/alex/frontend/package.json)
+- [frontend/pages/_app.tsx](file:///Users/aponte/personal_workspace/agent_engineering_production_udemy/projects/alex/frontend/pages/_app.tsx)
 - [docs/specs/infrastructure/github_ci_spec.md](file:///Users/aponte/personal_workspace/agent_engineering_production_udemy/projects/alex/docs/specs/infrastructure/github_ci_spec.md)
 
 ---
@@ -73,6 +74,12 @@ To achieve sub-2-minute execution, all jobs leverage aggressive layer and packag
 4. **Terraform Provider Cache & Headless Init**:
    - **Action**: `hashicorp/setup-terraform@v3` with `terraform_version: "1.9.0"`
    - **Behavior**: Validations execute with `terraform init -backend=false` to bypass S3 remote state initialization overhead.
+
+### 2.4 Frontend Environment Variables & Static Pre-rendering
+
+During Next.js production compilation (`next build`), pages wrapped with `<ClerkProvider>` require a publishable key during static page pre-rendering. To prevent static build failures (`Missing publishableKey`):
+- **CI Workflow Configuration**: The `frontend-build-check` job step reads directly from GitHub Secrets (`NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${{ secrets.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY }}`).
+- **Local Application Configuration**: [frontend/pages/_app.tsx](file:///Users/aponte/personal_workspace/agent_engineering_production_udemy/projects/alex/frontend/pages/_app.tsx) reads `process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` from local `.env.local` configuration.
 
 ---
 
@@ -194,7 +201,10 @@ jobs:
 
       - name: Build Next.js Application
         working-directory: frontend
+        env:
+          NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${{ secrets.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY }}
         run: npm run build
+```
 ```
 
 ---
