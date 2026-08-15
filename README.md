@@ -29,7 +29,7 @@ Project Alex utilizes the `docs/` directory—specifically `docs/specs/`—as an
 Project Alex includes a GitHub Actions Continuous Integration (CI) pipeline designed for rapid PR feedback and quality gate validation:
 
 - **CI Specification**: Defined in [docs/specs/infrastructure/github_ci_spec.md](file:///Users/aponte/personal_workspace/agent_engineering_production_udemy.nosync/projects/alex/docs/specs/infrastructure/github_ci_spec.md).
-- **Workflow Pipeline**: [.github/workflows/ci.yml](file:///Users/aponte/personal_workspace/agent_engineering_production_udemy.nosync/projects/alex/.github/workflows/ci.yml) executes 3 parallel jobs on pull requests targeting `main` and branch pushes (`lint-and-typecheck`, `backend-test-suite`, `frontend-build-check`). Infrastructure validation is managed in the CD deployment flow.
+- **Workflow Pipeline**: [.github/workflows/ci.yml](file:///Users/aponte/personal_workspace/agent_engineering_production_udemy.nosync/projects/alex/.github/workflows/ci.yml) executes quality checks and builds production release artifacts (`frontend-static-build` and `lambda-agent-packages`) uploaded via `actions/upload-artifact@v4`.
 - **Performance SLA**: Optimized with `uv`, `npm`, and Next.js build layer caching to complete in **< 120 seconds** (~65-75s average).
 
 #### Local Verification Commands

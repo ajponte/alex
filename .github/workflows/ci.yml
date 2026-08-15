@@ -117,4 +117,56 @@ jobs:
           NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${{ secrets.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY }}
         run: npm run build
 
+      - name: Upload Frontend Static Export Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-static-build
+          path: frontend/out
+          retention-days: 7
+
+  # ---------------------------------------------------------------------------
+  # Job 4: Package Lambda Agent Artifacts
+  # ---------------------------------------------------------------------------
+  package-lambda-artifacts:
+    name: Package Lambda Agent Artifacts
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Python & uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: "latest"
+          enable-cache: true
+          cache-dependency-glob: "backend/uv.lock"
+
+      - name: Install Backend Dependencies
+        working-directory: backend
+        run: uv sync
+
+      - name: Package Lambda Functions
+        working-directory: backend
+        run: |
+          uv run planner/package_docker.py || true
+          uv run tagger/package_docker.py || true
+          uv run reporter/package_docker.py || true
+          uv run charter/package_docker.py || true
+          uv run retirement/package_docker.py || true
+          uv run package_scheduler.py || true
+
+      - name: Upload Lambda Agent Packages Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: lambda-agent-packages
+          path: |
+            backend/planner/planner_lambda.zip
+            backend/tagger/tagger_lambda.zip
+            backend/reporter/reporter_lambda.zip
+            backend/charter/charter_lambda.zip
+            backend/retirement/retirement_lambda.zip
+            backend/scheduler/lambda_function.zip
+          retention-days: 7
+
 

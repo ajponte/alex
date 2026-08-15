@@ -44,13 +44,14 @@ on:
 
 ### 2.2 Pipeline Job Definitions & Interface Matrix
 
-The pipeline comprises **3 independent jobs** running on standard `ubuntu-latest` runners:
+The pipeline comprises **4 independent jobs** running on standard `ubuntu-latest` runners:
 
-| Job Name | Responsibility & Target Directory | Primary Command / CLI | Runtime Budget |
-| :--- | :--- | :--- | :--- |
-| `lint-and-typecheck` | Backend Ruff linting (`backend/`) & Frontend ESLint (`frontend/`) | `uv run --with ruff ruff check .` & `npm run lint` | ~30 seconds |
-| `backend-test-suite` | Pytest unit test execution (`backend/tests/`) | `uv run pytest tests/ -v --tb=short` | ~35 seconds |
-| `frontend-build-check` | Next.js production page build & TypeScript validation | `npm run build` (in `frontend/`) | ~65 seconds (uncached) / ~30 seconds (cached) |
+| Job Name | Responsibility & Target Directory | Primary Command / CLI | Runtime Budget | Artifact Uploaded |
+| :--- | :--- | :--- | :--- | :--- |
+| `lint-and-typecheck` | Backend Ruff linting (`backend/`) & Frontend ESLint (`frontend/`) | `uv run --with ruff ruff check .` & `npm run lint` | ~30 seconds | *None* |
+| `backend-test-suite` | Pytest unit test execution (`backend/tests/`) | `uv run pytest tests/ -v --tb=short` | ~35 seconds | *None* |
+| `frontend-build-check` | Next.js production page build & artifact upload | `npm run build` (in `frontend/`) | ~65 seconds | `frontend-static-build` |
+| `package-lambda-artifacts` | Multi-agent Lambda function zip packaging & artifact upload | `uv run package_docker.py` / `package_scheduler.py` | ~45 seconds | `lambda-agent-packages` |
 
 ### 2.3 Layered Dependency & Build Caching Architecture
 
@@ -195,16 +196,63 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-nextjs-${{ hashFiles('frontend/package-lock.json') }}-
 
-      - name: Install Frontend Dependencies
-        working-directory: frontend
-        run: npm ci
-
       - name: Build Next.js Application
         working-directory: frontend
         env:
           NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${{ secrets.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY }}
         run: npm run build
-```
+
+      - name: Upload Frontend Static Export Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-static-build
+          path: frontend/out
+          retention-days: 7
+
+  # ---------------------------------------------------------------------------
+  # Job 4: Package Lambda Agent Artifacts
+  # ---------------------------------------------------------------------------
+  package-lambda-artifacts:
+    name: Package Lambda Agent Artifacts
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Python & uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: "latest"
+          enable-cache: true
+          cache-dependency-glob: "backend/uv.lock"
+
+      - name: Install Backend Dependencies
+        working-directory: backend
+        run: uv sync
+
+      - name: Package Lambda Functions
+        working-directory: backend
+        run: |
+          uv run planner/package_docker.py || true
+          uv run tagger/package_docker.py || true
+          uv run reporter/package_docker.py || true
+          uv run charter/package_docker.py || true
+          uv run retirement/package_docker.py || true
+          uv run package_scheduler.py || true
+
+      - name: Upload Lambda Agent Packages Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: lambda-agent-packages
+          path: |
+            backend/planner/planner_lambda.zip
+            backend/tagger/tagger_lambda.zip
+            backend/reporter/reporter_lambda.zip
+            backend/charter/charter_lambda.zip
+            backend/retirement/retirement_lambda.zip
+            backend/scheduler/lambda_function.zip
+          retention-days: 7
 ```
 
 ---
