@@ -16,7 +16,21 @@ provider "aws" {
 # Data source for current caller identity
 data "aws_caller_identity" "current" {}
 
+# Data source for production API keys from AWS Secrets Manager (alex/production/secrets)
+data "aws_secretsmanager_secret" "app_secrets" {
+  name = "alex/production/secrets"
+}
+
+data "aws_secretsmanager_secret_version" "app_secrets" {
+  secret_id = data.aws_secretsmanager_secret.app_secrets.id
+}
+
 locals {
+  app_secrets = try(jsondecode(data.aws_secretsmanager_secret_version.app_secrets.secret_string), {})
+  
+  openai_api_key      = var.openai_api_key != null && var.openai_api_key != "" ? var.openai_api_key : lookup(local.app_secrets, "OPENAI_API_KEY", "")
+  polygon_api_key     = var.polygon_api_key != null && var.polygon_api_key != "" ? var.polygon_api_key : lookup(local.app_secrets, "POLYGON_API_KEY", "")
+  alex_api_key        = var.alex_api_key != null && var.alex_api_key != "" ? var.alex_api_key : lookup(local.app_secrets, "ALEX_API_KEY", "")
   researcher_deployed = var.researcher_image_uri != ""
   scheduler_active    = var.scheduler_enabled && local.researcher_deployed
 }
@@ -131,9 +145,9 @@ resource "aws_lambda_function" "researcher" {
 
   environment {
     variables = {
-      OPENAI_API_KEY    = var.openai_api_key
+      OPENAI_API_KEY    = local.openai_api_key
       ALEX_API_ENDPOINT = var.alex_api_endpoint
-      ALEX_API_KEY      = var.alex_api_key
+      ALEX_API_KEY      = local.alex_api_key
       BEDROCK_REGION    = var.bedrock_region
       RESEARCHER_MODEL  = var.researcher_model
       MCP_LOGGING       = var.mcp_logging

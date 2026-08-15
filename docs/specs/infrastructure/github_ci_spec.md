@@ -4,6 +4,8 @@
 **Module**: `infrastructure / ci / github_actions`  
 **Target Files**:
 - [.github/workflows/ci.yml](file:///Users/aponte/personal_workspace/agent_engineering_production_udemy/projects/alex/.github/workflows/ci.yml)
+- [.github/workflows/reusable-lint-test.yml](file:///Users/aponte/personal_workspace/agent_engineering_production_udemy/projects/alex/.github/workflows/reusable-lint-test.yml)
+- [.github/workflows/reusable-build-artifacts.yml](file:///Users/aponte/personal_workspace/agent_engineering_production_udemy/projects/alex/.github/workflows/reusable-build-artifacts.yml)
 - [backend/pyproject.toml](file:///Users/aponte/personal_workspace/agent_engineering_production_udemy/projects/alex/backend/pyproject.toml)
 - [frontend/package.json](file:///Users/aponte/personal_workspace/agent_engineering_production_udemy/projects/alex/frontend/package.json)
 - [frontend/pages/_app.tsx](file:///Users/aponte/personal_workspace/agent_engineering_production_udemy/projects/alex/frontend/pages/_app.tsx)
@@ -13,21 +15,22 @@
 
 ## 1. Executive Summary & Objectives
 
-This specification defines the production-grade Continuous Integration (CI) architecture for Project Alex. The CI workflow provides automated static analysis, type checking, unit testing, and frontend build validation for all incoming code changes.
+This specification defines the production-grade Continuous Integration (CI) architecture for Project Alex using a **composable Reusable Workflow (`workflow_call`) design**. The CI workflow provides automated static analysis, type checking, unit testing, and production artifact compilation for all incoming code changes.
 
 ### Key Objectives & Principles:
-1. **Strict CI Scope Focus**: Enforces quality gates for pull requests and branch pushes without embedding continuous deployment (CD) or Terraform validation (Terraform formatting, validation, and planning are governed by the CD deployment pipeline in [docs/specs/infrastructure/scheduler_and_deployment_spec.md](file:///Users/aponte/personal_workspace/agent_engineering_production_udemy/projects/alex/docs/specs/infrastructure/scheduler_and_deployment_spec.md)).
-2. **Parallel Job Orchestration**: Divides validation into 3 independent, concurrently executing pipeline jobs to maximize runner concurrency and minimize developer feedback latency.
-3. **Layered Caching Strategy**: Integrates native dependency and build caching for Python (`astral-sh/setup-uv` with `enable-cache: true`), Node.js (`actions/setup-node` with `cache: 'npm'`), and Next.js compiler outputs (`actions/cache` for `frontend/.next/cache`).
-4. **Sub-2-Minute Performance SLA**: Guarantees total end-to-end CI execution time of **under 2 minutes (< 120 seconds)** wall-clock time per workflow run.
+1. **Composable Reusable Architecture**: Modularizes validation into discrete, reusable workflows (`reusable-lint-test.yml` and `reusable-build-artifacts.yml`) orchestrated by the main parent workflow (`ci.yml`).
+2. **Strict CI Scope Focus**: Enforces quality gates for pull requests and branch pushes without embedding continuous deployment (CD) or Terraform validation (Terraform formatting, validation, and planning are governed by the CD deployment pipeline in [docs/specs/infrastructure/github_cd_spec.md](file:///Users/aponte/personal_workspace/agent_engineering_production_udemy/projects/alex/docs/specs/infrastructure/github_cd_spec.md)).
+3. **Parallel Job Orchestration**: Divides validation into independent, concurrently executing pipeline jobs across reusable workflows to maximize runner concurrency and minimize developer feedback latency.
+4. **Layered Caching Strategy**: Integrates native dependency and build caching for Python (`astral-sh/setup-uv` with `enable-cache: true`), Node.js (`actions/setup-node` with `cache: 'npm'`), and Next.js compiler outputs (`actions/cache` for `frontend/.next/cache`).
+5. **Sub-2-Minute Performance SLA**: Guarantees total end-to-end CI execution time of **under 2 minutes (< 120 seconds)** wall-clock time per workflow run.
 
 ---
 
 ## 2. Technical Contracts & Interface Specifications
 
-### 2.1 Workflow Trigger Scope
+### 2.1 Workflow Trigger Scope & Composable Architecture
 
-The CI pipeline is triggered automatically on pull requests targeting the `main` branch, as well as pushes to `main` or topic/feature branches:
+The main parent CI workflow ([.github/workflows/ci.yml](file:///Users/aponte/personal_workspace/agent_engineering_production_udemy/projects/alex/.github/workflows/ci.yml)) is triggered automatically on pull requests targeting the `main` branch, as well as pushes to `main` or topic/feature branches:
 
 ```yaml
 on:
@@ -42,16 +45,20 @@ on:
       - main
 ```
 
+The parent workflow delegates validation and artifact packaging to two composable reusable workflows via `workflow_call`:
+- `lint-and-test`: Calls [.github/workflows/reusable-lint-test.yml](file:///Users/aponte/personal_workspace/agent_engineering_production_udemy/projects/alex/.github/workflows/reusable-lint-test.yml)
+- `build-artifacts`: Calls [.github/workflows/reusable-build-artifacts.yml](file:///Users/aponte/personal_workspace/agent_engineering_production_udemy/projects/alex/.github/workflows/reusable-build-artifacts.yml)
+
 ### 2.2 Pipeline Job Definitions & Interface Matrix
 
-The pipeline comprises **4 independent jobs** running on standard `ubuntu-latest` runners:
+The composable CI pipeline comprises **4 independent jobs** defined inside two reusable workflows running on `ubuntu-latest` runners:
 
-| Job Name | Responsibility & Target Directory | Primary Command / CLI | Runtime Budget | Artifact Uploaded |
+| Reusable Workflow | Job ID | Responsibility & Scope | Primary Command / CLI | Artifact Uploaded |
 | :--- | :--- | :--- | :--- | :--- |
-| `lint-and-typecheck` | Backend Ruff linting (`backend/`) & Frontend ESLint (`frontend/`) | `uv run --with ruff ruff check .` & `npm run lint` | ~30 seconds | *None* |
-| `backend-test-suite` | Pytest unit test execution (`backend/tests/`) | `uv run pytest tests/ -v --tb=short` | ~35 seconds | *None* |
-| `frontend-build-check` | Next.js production page build & artifact upload | `npm run build` (in `frontend/`) | ~65 seconds | `frontend-static-build` |
-| `package-lambda-artifacts` | Multi-agent Lambda function zip packaging & artifact upload | `uv run package_docker.py` / `package_scheduler.py` | ~45 seconds | `lambda-agent-packages` |
+| `reusable-lint-test.yml` | `lint-and-typecheck` | Backend Ruff linting (`backend/`) & Frontend ESLint (`frontend/`) | `uv run --with ruff ruff check .` & `npm run lint` | *None* |
+| `reusable-lint-test.yml` | `backend-test-suite` | Pytest unit test execution (`backend/tests/`) | `uv run pytest tests/ -v --tb=short` | *None* |
+| `reusable-build-artifacts.yml` | `frontend-build-check` | Next.js production page build & static output export | `npm run build` (in `frontend/`) | `frontend-static-build` |
+| `reusable-build-artifacts.yml` | `package-lambda-artifacts` | Multi-agent Lambda function zip packaging | `uv run package_docker.py` / `package_scheduler.py` | `lambda-agent-packages` |
 
 ### 2.3 Layered Dependency & Build Caching Architecture
 
@@ -72,10 +79,6 @@ To achieve sub-2-minute execution, all jobs leverage aggressive layer and packag
    - **Configuration**: `path: frontend/.next/cache`, `key: ${{ runner.os }}-nextjs-${{ hashFiles('frontend/package-lock.json') }}-${{ hashFiles('frontend/**') }}`
    - **Behavior**: Caches Next.js page compilation and AST artifacts, accelerating incremental `next build` validation by up to 50%.
 
-4. **Terraform Provider Cache & Headless Init**:
-   - **Action**: `hashicorp/setup-terraform@v3` with `terraform_version: "1.9.0"`
-   - **Behavior**: Validations execute with `terraform init -backend=false` to bypass S3 remote state initialization overhead.
-
 ### 2.4 Frontend Environment Variables & Static Pre-rendering
 
 During Next.js production compilation (`next build`), pages wrapped with `<ClerkProvider>` require a publishable key during static page pre-rendering. To prevent static build failures (`Missing publishableKey`):
@@ -84,9 +87,9 @@ During Next.js production compilation (`next build`), pages wrapped with `<Clerk
 
 ---
 
-## 3. Implementation Plan & Execution Steps
+## 3. Implementation Plan & Declarative Workflows
 
-The full declarative GitHub Actions workflow configuration is defined at [.github/workflows/ci.yml](file:///Users/aponte/personal_workspace/agent_engineering_production_udemy/projects/alex/.github/workflows/ci.yml):
+### 3.1 Parent Orchestrator Workflow: `.github/workflows/ci.yml`
 
 ```yaml
 name: Continuous Integration
@@ -107,9 +110,26 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # ---------------------------------------------------------------------------
-  # Job 1: Static Analysis, Ruff Linting & Frontend ESLint
-  # ---------------------------------------------------------------------------
+  lint-and-test:
+    name: Lint & Test Suite
+    uses: ./.github/workflows/reusable-lint-test.yml
+    secrets: inherit
+
+  build-artifacts:
+    name: Build & Package Artifacts
+    uses: ./.github/workflows/reusable-build-artifacts.yml
+    secrets: inherit
+```
+
+### 3.2 Reusable Workflow: `.github/workflows/reusable-lint-test.yml`
+
+```yaml
+name: Reusable Lint & Test Workflow
+
+on:
+  workflow_call:
+
+jobs:
   lint-and-typecheck:
     name: Lint & Typecheck
     runs-on: ubuntu-latest
@@ -144,9 +164,6 @@ jobs:
         working-directory: frontend
         run: npm run lint
 
-  # ---------------------------------------------------------------------------
-  # Job 2: Backend Pytest Unit Test Suite
-  # ---------------------------------------------------------------------------
   backend-test-suite:
     name: Backend Pytest Suite
     runs-on: ubuntu-latest
@@ -169,10 +186,20 @@ jobs:
       - name: Run Pytest Suite
         working-directory: backend
         run: uv run pytest tests/ -v --tb=short
+```
 
-  # ---------------------------------------------------------------------------
-  # Job 3: Frontend Next.js Build & Page Compilation
-  # ---------------------------------------------------------------------------
+### 3.3 Reusable Workflow: `.github/workflows/reusable-build-artifacts.yml`
+
+```yaml
+name: Reusable Build & Package Artifacts Workflow
+
+on:
+  workflow_call:
+    secrets:
+      NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY:
+        required: false
+
+jobs:
   frontend-build-check:
     name: Frontend Build Check
     runs-on: ubuntu-latest
@@ -196,6 +223,10 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-nextjs-${{ hashFiles('frontend/package-lock.json') }}-
 
+      - name: Install Frontend Dependencies
+        working-directory: frontend
+        run: npm ci
+
       - name: Build Next.js Application
         working-directory: frontend
         env:
@@ -209,9 +240,6 @@ jobs:
           path: frontend/out
           retention-days: 7
 
-  # ---------------------------------------------------------------------------
-  # Job 4: Package Lambda Agent Artifacts
-  # ---------------------------------------------------------------------------
   package-lambda-artifacts:
     name: Package Lambda Agent Artifacts
     runs-on: ubuntu-latest
@@ -261,12 +289,13 @@ jobs:
 
 To guarantee the **sub-2-minute (< 120s)** performance SLA:
 
-1. **Parallel Execution Architecture**: All 3 top-level jobs (`lint-and-typecheck`, `backend-test-suite`, and `frontend-build-check`) run in parallel with zero inter-job dependencies (`needs:` block omitted).
+1. **Parallel Execution Architecture**: Top-level workflow jobs (`lint-and-test` and `build-artifacts`) run concurrently without blocking each other.
 2. **Concurrency Control**: `concurrency.cancel-in-progress: true` automatically terminates outdated builds when new commits are pushed to the same pull request branch.
 3. **Target Runtime Matrix**:
    - `lint-and-typecheck`: ~30s
    - `backend-test-suite`: ~35s
    - `frontend-build-check`: ~65s uncached / ~30s cached (governs overall wall-clock completion time)
+   - `package-lambda-artifacts`: ~45s
    - **Total CI Pipeline Wall-Clock Duration**: **~65 - 75 seconds** (55s under the 120s SLA threshold).
 
 ---
@@ -289,5 +318,5 @@ cd frontend && npm run lint && npm run build
 ### 5.2 GitHub Actions Verification Protocol
 
 1. **Trigger Check**: Submit a PR to `main` or push to a feature branch (`feature/*`).
-2. **Status Check**: Verify all 4 jobs (and 7 terraform matrix entries) appear under PR status checks.
+2. **Status Check**: Verify reusable workflows execute clean job groups under PR status checks.
 3. **SLA Audit**: Confirm total pipeline wall-clock time is < 120 seconds in the GitHub Actions summary tab.

@@ -1,0 +1,57 @@
+name: Reusable Deploy Frontend Workflow
+
+on:
+  workflow_call:
+    inputs:
+      run_id:
+        description: 'CI Workflow Run ID (optional, defaults to triggering/latest CI run)'
+        required: false
+        type: string
+        default: ''
+    secrets:
+      AWS_ROLE_ARN:
+        required: false
+      AWS_REGION:
+        required: false
+      AWS_S3_FRONTEND_BUCKET:
+        required: false
+      CLOUDFRONT_DISTRIBUTION_ID:
+        required: false
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  deploy-frontend:
+    name: Deploy Next.js Frontend & Invalidate CloudFront
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials via OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ secrets.AWS_REGION || 'us-east-1' }}
+          role-session-name: Alex-CD-Frontend-Deploy
+
+      - name: Download Frontend Static Export Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: frontend-static-build
+          path: frontend/out
+          run-id: ${{ inputs.run_id || github.event.workflow_run.id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Sync Static Frontend Artifacts to S3
+        run: |
+          aws s3 sync frontend/out/ s3://${{ secrets.AWS_S3_FRONTEND_BUCKET }} --delete
+
+      - name: Invalidate CloudFront CDN Cache
+        run: |
+          aws cloudfront create-invalidation \
+            --distribution-id ${{ secrets.CLOUDFRONT_DISTRIBUTION_ID }} \
+            --paths "/*"

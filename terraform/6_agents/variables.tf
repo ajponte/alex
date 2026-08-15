@@ -37,6 +37,8 @@ variable "sagemaker_endpoint" {
 variable "polygon_api_key" {
   description = "Polygon.io API key for market data"
   type        = string
+  default     = ""
+  sensitive   = true
 }
 
 variable "polygon_plan" {
