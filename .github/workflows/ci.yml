@@ -1,0 +1,152 @@
+name: Continuous Integration
+
+on:
+  push:
+    branches:
+      - main
+      - 'feature/**'
+      - 'fix/**'
+      - 'chore/**'
+  pull_request:
+    branches:
+      - main
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Job 1: Static Analysis, Ruff Linting & Frontend ESLint
+  # ---------------------------------------------------------------------------
+  lint-and-typecheck:
+    name: Lint & Typecheck
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Python & uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: "latest"
+          enable-cache: true
+          cache-dependency-glob: "backend/uv.lock"
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: "frontend/package-lock.json"
+
+      - name: Run Backend Ruff Lint Check
+        working-directory: backend
+        run: uv run --with ruff ruff check .
+
+      - name: Install Frontend Dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Run Frontend ESLint Check
+        working-directory: frontend
+        run: npm run lint
+
+  # ---------------------------------------------------------------------------
+  # Job 2: Backend Pytest Unit Test Suite
+  # ---------------------------------------------------------------------------
+  backend-test-suite:
+    name: Backend Pytest Suite
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Python & uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: "latest"
+          enable-cache: true
+          cache-dependency-glob: "backend/uv.lock"
+
+      - name: Install Backend Dependencies
+        working-directory: backend
+        run: uv sync
+
+      - name: Run Pytest Suite
+        working-directory: backend
+        run: uv run pytest tests/ -v --tb=short
+
+  # ---------------------------------------------------------------------------
+  # Job 3: Frontend Next.js Build & Page Compilation
+  # ---------------------------------------------------------------------------
+  frontend-build-check:
+    name: Frontend Build Check
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: "frontend/package-lock.json"
+
+      - name: Cache Next.js Build Output
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/frontend/.next/cache
+          key: ${{ runner.os }}-nextjs-${{ hashFiles('frontend/package-lock.json') }}-${{ hashFiles('frontend/**') }}
+          restore-keys: |
+            ${{ runner.os }}-nextjs-${{ hashFiles('frontend/package-lock.json') }}-
+
+      - name: Install Frontend Dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Build Next.js Application
+        working-directory: frontend
+        run: npm run build
+
+  # ---------------------------------------------------------------------------
+  # Job 4: Terraform Format & Validation across Subdirectories
+  # ---------------------------------------------------------------------------
+  terraform-validate:
+    name: Terraform Validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    strategy:
+      matrix:
+        dir:
+          - terraform/2_sagemaker
+          - terraform/3_ingestion
+          - terraform/4_researcher
+          - terraform/5_database
+          - terraform/6_agents
+          - terraform/7_frontend
+          - terraform/8_enterprise
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.9.0"
+
+      - name: Check Formatting
+        working-directory: ${{ matrix.dir }}
+        run: terraform fmt -check
+
+      - name: Initialize Headless Terraform
+        working-directory: ${{ matrix.dir }}
+        run: terraform init -backend=false
+
+      - name: Validate HCL Syntax
+        working-directory: ${{ matrix.dir }}
+        run: terraform validate
