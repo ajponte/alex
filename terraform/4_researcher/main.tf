@@ -27,7 +27,7 @@ data "aws_secretsmanager_secret_version" "app_secrets" {
 
 locals {
   app_secrets = try(jsondecode(data.aws_secretsmanager_secret_version.app_secrets.secret_string), {})
-  
+
   openai_api_key      = var.openai_api_key != null && var.openai_api_key != "" ? var.openai_api_key : lookup(local.app_secrets, "OPENAI_API_KEY", "")
   polygon_api_key     = var.polygon_api_key != null && var.polygon_api_key != "" ? var.polygon_api_key : lookup(local.app_secrets, "POLYGON_API_KEY", "")
   alex_api_key        = var.alex_api_key != null && var.alex_api_key != "" ? var.alex_api_key : lookup(local.app_secrets, "ALEX_API_KEY", "")
@@ -202,15 +202,15 @@ resource "aws_iam_role" "eventbridge_role" {
 
 # Lambda function for invoking researcher
 resource "aws_lambda_function" "scheduler_lambda" {
-  count         = local.scheduler_active ? 1 : 0
-  function_name = "alex-researcher-scheduler"
-  role          = aws_iam_role.lambda_scheduler_role[0].arn
-  filename      = "${path.module}/../../backend/scheduler/lambda_function.zip"
+  count            = local.scheduler_active ? 1 : 0
+  function_name    = "alex-researcher-scheduler"
+  role             = aws_iam_role.lambda_scheduler_role[0].arn
+  filename         = "${path.module}/../../backend/scheduler/lambda_function.zip"
   source_code_hash = fileexists("${path.module}/../../backend/scheduler/lambda_function.zip") ? filebase64sha256("${path.module}/../../backend/scheduler/lambda_function.zip") : null
-  handler       = "lambda_function.handler"
-  runtime       = "python3.12"
-  timeout       = 180
-  memory_size   = 256
+  handler          = "lambda_function.handler"
+  runtime          = "python3.12"
+  timeout          = 180
+  memory_size      = 256
 
   environment {
     variables = {

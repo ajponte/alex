@@ -11,7 +11,7 @@ output "sagemaker_endpoint_arn" {
 
 output "setup_instructions" {
   description = "Instructions for setting up environment variables"
-  value = <<-EOT
+  value       = <<-EOT
     
     ✅ SageMaker endpoint deployed successfully!
     

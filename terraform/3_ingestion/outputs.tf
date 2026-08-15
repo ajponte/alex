@@ -21,7 +21,7 @@ output "api_key_value" {
 
 output "setup_instructions" {
   description = "Instructions for setting up environment variables"
-  value = <<-EOT
+  value       = <<-EOT
     
     ✅ Ingestion pipeline deployed successfully!
     

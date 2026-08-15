@@ -53,9 +53,9 @@ locals {
   name_prefix = "alex"
 
   common_tags = {
-    Project     = "alex"
-    Part        = "7_frontend"
-    ManagedBy   = "terraform"
+    Project   = "alex"
+    Part      = "7_frontend"
+    ManagedBy = "terraform"
   }
 }
 
@@ -252,10 +252,10 @@ resource "aws_apigatewayv2_api" "main" {
   tags          = local.common_tags
 
   cors_configuration {
-    allow_credentials = false  # Cannot be true when allow_origins is "*"
+    allow_credentials = false # Cannot be true when allow_origins is "*"
     allow_headers     = ["authorization", "content-type", "x-amz-date", "x-api-key", "x-amz-security-token"]
     allow_methods     = ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
-    allow_origins     = ["*"]  # CORS is handled in Lambda via environment variables
+    allow_origins     = ["*"] # CORS is handled in Lambda via environment variables
     max_age           = 300
   }
 }

@@ -16,7 +16,7 @@ output "dashboard_names" {
 
 output "setup_instructions" {
   description = "Instructions for using the dashboards"
-  value = <<-EOT
+  value       = <<-EOT
 
     ✅ CloudWatch Dashboards deployed successfully!
 
