@@ -79,6 +79,11 @@ resource "aws_ecr_repository_policy" "researcher_lambda_access" {
 }
 
 # IAM role for researcher Lambda
+import {
+  to = aws_iam_role.researcher_lambda_role
+  id = "alex-researcher-lambda-role"
+}
+
 resource "aws_iam_role" "researcher_lambda_role" {
   name = "alex-researcher-lambda-role"
 

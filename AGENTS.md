@@ -253,6 +253,12 @@ Encourage students to:
 - Test incrementally (don't deploy everything at once)
 - Keep AWS costs in mind (remind them to destroy when not actively working)
 
+### 7. **Git Commit & Push Rules**
+
+- **NEVER** automatically run `git commit` or `git push` code to GitHub.
+- **Sole Exception**: When the `dev-ops` subagent is testing a GitHub Actions workflow that requires pushing commits to trigger pipeline execution.
+- Otherwise, leave changes uncommitted locally or prompt the user before committing/pushing.
+
 ---
 
 ## Terraform Strategy

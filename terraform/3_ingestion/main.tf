@@ -64,6 +64,11 @@ resource "aws_s3_bucket_public_access_block" "vectors" {
 # ========================================
 
 # IAM role for Lambda
+import {
+  to = aws_iam_role.lambda_role
+  id = "alex-ingest-lambda-role"
+}
+
 resource "aws_iam_role" "lambda_role" {
   name = "alex-ingest-lambda-role"
 

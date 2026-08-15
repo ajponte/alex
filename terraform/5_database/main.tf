@@ -167,6 +167,11 @@ resource "aws_rds_cluster_instance" "aurora" {
 }
 
 # IAM role for Lambda to access Aurora Data API
+import {
+  to = aws_iam_role.lambda_aurora_role
+  id = "alex-lambda-aurora-role"
+}
+
 resource "aws_iam_role" "lambda_aurora_role" {
   name = "alex-lambda-aurora-role"
 
