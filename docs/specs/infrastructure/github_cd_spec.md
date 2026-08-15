@@ -19,15 +19,15 @@
 
 ## 1. Executive Summary & Objectives
 
-This specification defines the production-grade Continuous Deployment (CD) pipeline architecture for Project Alex. The CD workflow orchestrates automated infrastructure provisioning, multi-stack Terraform execution, containerized Lambda agent packaging and deployment, Next.js frontend building, S3 asset synchronization, and CloudFront CDN cache invalidations upon merging code to the `main` branch or manual dispatch.
+This specification defines the production-grade Continuous Deployment (CD) pipeline architecture for Project Alex. The CD workflow orchestrates automated infrastructure provisioning across multi-stack Terraform modules, containerized Lambda agent deployments, Next.js frontend asset delivery to AWS S3, and CloudFront CDN cache invalidations following successful Continuous Integration (CI) runs on the `main` branch or via manual dispatch.
 
 ### Key Objectives & Architectural Principles:
-1. **Automated Continuous Deployment Scope**: Automatically deploys infrastructure, agent code, and frontend updates on pushes to `main` or via manual `workflow_dispatch`.
+1. **Automated Continuous Deployment Trigger Scope**: Automatically triggers deployment following successful completion of the CI workflow ([docs/specs/infrastructure/github_ci_spec.md](file:///Users/aponte/personal_workspace/agent_engineering_production_udemy/projects/alex/docs/specs/infrastructure/github_ci_spec.md)) on `main` via `workflow_run` events, or on-demand via manual `workflow_dispatch`.
 2. **Passwordless AWS Authentication (OIDC)**: Integrates GitHub Actions OpenID Connect (OIDC) identity provider federation (`aws-actions/configure-aws-credentials`) using IAM role assumption (`role-to-assume: ${{ secrets.AWS_ROLE_ARN }}`), eliminating long-lived access key secrets.
 3. **Terraform Stack Matrix Provisioning**: Executes `terraform fmt -check`, `terraform init`, `terraform validate`, and `terraform apply -auto-approve` sequentially across all active Terraform modules (`2_sagemaker` through `8_enterprise`).
-4. **Unified Containerized Lambda Agent Deployment**: Packages and deploys all platform Lambda functions via [backend/deploy_all_lambdas.py](file:///Users/aponte/personal_workspace/agent_engineering_production_udemy/projects/alex/backend/deploy_all_lambdas.py) using `astral-sh/setup-uv@v5` and Docker for multi-stage dependency compilation.
-5. **Frontend Asset Delivery & CDN Cache Invalidation**: Builds the Next.js production web application (`npm run build` in [frontend/](file:///Users/aponte/personal_workspace/agent_engineering_production_udemy/projects/alex/frontend/)), synchronizes compiled static artifacts to S3 (`aws s3 sync`), and invalidates CloudFront distributions (`aws cloudfront create-invalidation`).
-6. **Harness Standard Compliance**: Fully adheres to the harness architecture defined in [docs/specs/llm_agent_harness_spec.md](file:///Users/aponte/personal_workspace/agent_engineering_production_udemy/projects/alex/docs/specs/llm_agent_harness_spec.md).
+4. **Consuming Pre-Packaged Lambda Artifacts**: Downloads the `lambda-agent-packages` zip artifacts uploaded during CI and invokes [backend/deploy_all_lambdas.py](file:///Users/aponte/personal_workspace/agent_engineering_production_udemy/projects/alex/backend/deploy_all_lambdas.py) **without** the `--package` flag. This consumes pre-built `.zip` archives directly and bypasses redundant Docker compilation in CD.
+5. **Consuming Pre-Built Frontend Artifacts & CDN Invalidation**: Downloads pre-compiled `frontend-static-build` export artifacts directly into `frontend/out/`, synchronizes static assets to S3 (`aws s3 sync`), and invalidates CloudFront distributions (`aws cloudfront create-invalidation`), completely eliminating Node.js compilation and `npm` build steps in CD.
+6. **Harness Standard Compliance**: Fully adheres to the harness architecture defined in [docs/specs/llm_agent_harness_spec.md](file:///Users/aponte/personal_workspace/agent_engineering_production_udemy/projects/alex/docs/specs/llm_agent_harness_spec.md) and deployment patterns in [docs/specs/infrastructure/scheduler_and_deployment_spec.md](file:///Users/aponte/personal_workspace/agent_engineering_production_udemy/projects/alex/docs/specs/infrastructure/scheduler_and_deployment_spec.md).
 
 > [!IMPORTANT]
 > Infrastructure deployment safety is governed by non-preemptive concurrency locks (`cancel-in-progress: false`). Ongoing `terraform apply` operations are never aborted mid-execution, protecting state backends against lock corruption.
@@ -36,17 +36,36 @@ This specification defines the production-grade Continuous Deployment (CD) pipel
 
 ## 2. Technical Contracts & Interface Specifications
 
-### 2.1 Workflow Triggers & Execution Scope
+### 2.1 Workflow Triggers & Artifact Inheritance Mechanism
 
-The CD pipeline triggers on direct commits or merged pull requests to `main`, as well as manual triggers via GitHub Actions UI:
+The CD pipeline triggers automatically upon successful completion of the Continuous Integration (CI) pipeline on the `main` branch, or via manual dispatch from the GitHub Actions UI:
 
 ```yaml
 on:
-  push:
+  workflow_run:
+    workflows: ["Continuous Integration"]
+    types:
+      - completed
     branches:
       - main
   workflow_dispatch:
+    inputs:
+      run_id:
+        description: 'CI Workflow Run ID (optional, defaults to triggering/latest CI run)'
+        required: false
+        type: string
 ```
+
+#### CI Artifact Inheritance Protocol:
+1. **CI Artifact Generation**: The CI workflow ([docs/specs/infrastructure/github_ci_spec.md](file:///Users/aponte/personal_workspace/agent_engineering_production_udemy/projects/alex/docs/specs/infrastructure/github_ci_spec.md)) produces two validated build artifacts:
+   - `frontend-static-build`: Exported static build HTML/JS assets from `frontend/out`.
+   - `lambda-agent-packages`: Pre-packaged `.zip` archives for all 5 Agent Orchestra Lambdas (`planner`, `tagger`, `reporter`, `charter`, `retirement`) and the `scheduler` Lambda.
+2. **Quality Gate Guardrail**: The CD workflow inspects the CI execution result:
+   ```yaml
+   if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+   ```
+   Deployments are blocked if the triggering CI run failed.
+3. **Artifact Retrieval**: Artifacts are fetched in CD using `actions/download-artifact@v4` with explicit `run-id` binding (`run-id: ${{ inputs.run_id || github.event.workflow_run.id }}`) and `github-token: ${{ secrets.GITHUB_TOKEN }}`.
 
 #### Concurrency Policy:
 To ensure infrastructure state lock integrity and prevent concurrent state corruption during `terraform apply` operations, the workflow enforces non-preemptive execution:
@@ -93,21 +112,21 @@ The CD pipeline comprises **3 main jobs**:
 
 ```mermaid
 graph TD
-    A["Trigger: Push to main / workflow_dispatch"] --> B["Job 1: terraform-plan-and-apply Matrix"]
+    A["Trigger: CI workflow_run (success on main) / workflow_dispatch"] --> B["Job 1: terraform-plan-and-apply Matrix"]
     B -->|"Matrix: 2_sagemaker .. 8_enterprise"| C{"Terraform Stacks Applied Successfully?"}
     C -->|"Yes"| D["Job 2: deploy-lambda-agents"]
     C -->|"Yes"| E["Job 3: deploy-frontend"]
-    D --> F["Packaging & Deploy via deploy_all_lambdas.py"]
-    E --> G["Next.js Build + S3 Sync + CloudFront Invalidation"]
+    D -->|"Download lambda-agent-packages artifact"| F["Deploy via deploy_all_lambdas.py (Without --package)"]
+    E -->|"Download frontend-static-build artifact into frontend/out"| G["AWS S3 Sync + CloudFront CDN Invalidation"]
 ```
 
 #### CD Job Interface Matrix:
 
 | Job ID | Description & Scope | Target Working Directory | Execution Commands & CLI | Dependencies (`needs`) |
 | :--- | :--- | :--- | :--- | :--- |
-| `terraform-plan-and-apply` | Matrix provisioning across Terraform stacks (`2_sagemaker` through `8_enterprise`) | `terraform/${{ matrix.stack }}` | `terraform fmt -check`<br>`terraform init`<br>`terraform validate`<br>`terraform apply -auto-approve` | *None (Initial Gate)* |
-| `deploy-lambda-agents` | Unified Lambda packaging and resource recreation for agent & researcher functions | [backend/](file:///Users/aponte/personal_workspace/agent_engineering_production_udemy/projects/alex/backend/) | `uv run deploy_all_lambdas.py --package` | `terraform-plan-and-apply` |
-| `deploy-frontend` | Static page generation, S3 sync, and CloudFront edge cache invalidation | [frontend/](file:///Users/aponte/personal_workspace/agent_engineering_production_udemy/projects/alex/frontend/) | `npm ci`<br>`npm run build`<br>`aws s3 sync out/ s3://${{ secrets.AWS_S3_FRONTEND_BUCKET }} --delete`<br>`aws cloudfront create-invalidation` | `terraform-plan-and-apply` |
+| `terraform-plan-and-apply` | Matrix provisioning across Terraform stacks (`2_sagemaker` through `8_enterprise`) | `terraform/${{ matrix.stack }}` | `terraform fmt -check`<br>`terraform init`<br>`terraform validate`<br>`terraform apply -auto-approve` | *None (Initial Quality Gate)* |
+| `deploy-lambda-agents` | Lambda resource recreation & deployment using CI pre-packaged `.zip` artifacts | [backend/](file:///Users/aponte/personal_workspace/agent_engineering_production_udemy/projects/alex/backend/) | `actions/download-artifact@v4`<br>`uv run deploy_all_lambdas.py` | `terraform-plan-and-apply` |
+| `deploy-frontend` | Static asset synchronization to S3 & CloudFront cache invalidation using CI pre-built artifacts | [frontend/](file:///Users/aponte/personal_workspace/agent_engineering_production_udemy/projects/alex/frontend/) | `actions/download-artifact@v4`<br>`aws s3 sync frontend/out/ s3://${{ secrets.AWS_S3_FRONTEND_BUCKET }} --delete`<br>`aws cloudfront create-invalidation` | `terraform-plan-and-apply` |
 
 ---
 
@@ -141,27 +160,35 @@ For each stack item in the matrix, the job executes four mandatory Terraform lif
 
 ---
 
-### 2.5 Lambda Agent Packaging & Deployment Contract
+### 2.5 Lambda Agent Deployment Contract
 
-The `deploy-lambda-agents` job invokes [backend/deploy_all_lambdas.py](file:///Users/aponte/personal_workspace/agent_engineering_production_udemy/projects/alex/backend/deploy_all_lambdas.py), which orchestrates:
-- Invoking `package_docker.py` across agent subdirectories (`planner`, `tagger`, `reporter`, `charter`, `retirement`).
-- Packaging the research scheduler via [backend/scheduler/package_scheduler.py](file:///Users/aponte/personal_workspace/agent_engineering_production_udemy/projects/alex/backend/scheduler/package_scheduler.py).
-- Tainting `aws_lambda_function` resources in [terraform/6_agents](file:///Users/aponte/personal_workspace/agent_engineering_production_udemy/projects/alex/terraform/6_agents) and [terraform/4_researcher](file:///Users/aponte/personal_workspace/agent_engineering_production_udemy/projects/alex/terraform/4_researcher) to guarantee zip updates on deployment.
-- Executing `terraform apply -auto-approve` on agent and researcher stacks.
+The `deploy-lambda-agents` job executes [backend/deploy_all_lambdas.py](file:///Users/aponte/personal_workspace/agent_engineering_production_udemy/projects/alex/backend/deploy_all_lambdas.py) **without** the `--package` flag (`uv run deploy_all_lambdas.py`).
 
-#### Key Setup Requirements:
-- Python environment managed by `astral-sh/setup-uv@v5` with caching enabled.
-- Active Docker engine service on the runner (standard in `ubuntu-latest`) for multi-stage `linux/amd64` dependency compilation.
+#### Execution & Consumption Logic:
+1. **Artifact Extraction**: `actions/download-artifact@v4` places pre-packaged `.zip` files into `backend/`:
+   - `backend/planner/planner_lambda.zip`
+   - `backend/tagger/tagger_lambda.zip`
+   - `backend/reporter/reporter_lambda.zip`
+   - `backend/charter/charter_lambda.zip`
+   - `backend/retirement/retirement_lambda.zip`
+   - `backend/scheduler/lambda_function.zip`
+2. **Package Check Bypass**: When `deploy_all_lambdas.py` executes without `--package`, it verifies the existence of all 6 `.zip` archives. Because they were pre-packaged during CI and extracted from the artifact, the script logs their sizes and skips running `package_docker.py` or `package_scheduler.py`.
+3. **Terraform Taint & Recreation**: The script taints `aws_lambda_function` resources in [terraform/6_agents](file:///Users/aponte/personal_workspace/agent_engineering_production_udemy/projects/alex/terraform/6_agents) (`planner`, `tagger`, `reporter`, `charter`, `retirement`) and [terraform/4_researcher](file:///Users/aponte/personal_workspace/agent_engineering_production_udemy/projects/alex/terraform/4_researcher) (`scheduler_lambda`, `researcher`), forcing Terraform to recreate the functions with the updated zip contents.
+4. **Terraform Apply**: Runs `terraform apply -auto-approve` on `6_agents` and `4_researcher` stacks.
+
+> [!NOTE]
+> Consuming pre-packaged zip artifacts removes the requirement for Docker daemon execution in the CD runner during `deploy-lambda-agents`, significantly speeding up deployment times.
 
 ---
 
-### 2.6 Frontend Build & CDN Invalidation Contract
+### 2.6 Frontend Deployment Contract
 
-The `deploy-frontend` job compiles the Next.js single-page frontend application in [frontend/](file:///Users/aponte/personal_workspace/agent_engineering_production_udemy/projects/alex/frontend/) and deploys it to AWS S3 and CloudFront:
+The `deploy-frontend` job receives pre-compiled static web application files and deploys them directly to AWS infrastructure:
 
-1. **Build Environment Binding**: Pass Clerk publishable key and API endpoints to Next.js during static site compilation (`npm run build`).
-2. **S3 Asset Synchronization**: Execute `aws s3 sync frontend/out/ s3://${{ secrets.AWS_S3_FRONTEND_BUCKET }} --delete` to upload updated static assets.
-3. **CloudFront CDN Cache Invalidation**: Clear edge caches using `aws cloudfront create-invalidation --distribution-id ${{ secrets.CLOUDFRONT_DISTRIBUTION_ID }} --paths "/*"`.
+1. **Artifact Download**: `actions/download-artifact@v4` downloads the `frontend-static-build` artifact directly into `frontend/out/`.
+2. **Node.js Compilation Elimination**: Because compilation (`npm run build`) was performed in CI, CD requires **no Node.js setup, no `npm ci`, and no build scripts**.
+3. **S3 Asset Synchronization**: Executes `aws s3 sync frontend/out/ s3://${{ secrets.AWS_S3_FRONTEND_BUCKET }} --delete` to sync static assets to the target S3 bucket.
+4. **CloudFront CDN Cache Invalidation**: Clears edge caches using `aws cloudfront create-invalidation --distribution-id ${{ secrets.CLOUDFRONT_DISTRIBUTION_ID }} --paths "/*"`.
 
 ---
 
@@ -173,14 +200,13 @@ The CD pipeline relies on repository secrets and environment variables configure
 | :--- | :--- | :--- | :--- |
 | `AWS_ROLE_ARN` | AWS IAM Role ARN configured for GitHub Actions OIDC trust relationship | All Jobs (`configure-aws-credentials`) | `arn:aws:iam::123456789012:role/alex-github-actions-cd-role` |
 | `AWS_REGION` | Target AWS deployment region | All Jobs | `us-east-1` |
-| `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | Clerk publishable key for Next.js pre-rendering | `deploy-frontend` | `pk_test_...` |
-| `CLERK_SECRET_KEY` | Clerk API secret key for backend authentication | `deploy-frontend` | `sk_test_...` |
 | `CLERK_JWKS_URL` | Clerk JWKS URL for JWT validation in API Gateway Lambda | `terraform-plan-and-apply` (`7_frontend`), `deploy-lambda-agents` | `https://<clerk-domain>/.well-known/jwks.json` |
 | `AWS_S3_FRONTEND_BUCKET` | S3 bucket name created by `7_frontend` Terraform stack | `deploy-frontend` | `alex-frontend-123456789012` |
 | `CLOUDFRONT_DISTRIBUTION_ID` | CloudFront Distribution ID created by `7_frontend` Terraform stack | `deploy-frontend` | `E1A2B3C4D5E6F7` |
 | `POLYGON_API_KEY` | Polygon.io API key for real-time market price data | `terraform-plan-and-apply` (`6_agents`), `deploy-lambda-agents` | `poly_key_...` |
 | `OPENAI_API_KEY` | OpenAI API key for Researcher Lambda and Agents SDK tracing | `terraform-plan-and-apply` (`4_researcher`, `6_agents`), `deploy-lambda-agents` | `sk-proj-...` |
 | `ALEX_API_KEY` | Internal Alex API key for inter-service communication | `terraform-plan-and-apply` (`4_researcher`) | `alex_secret_key_...` |
+| `GITHUB_TOKEN` | Automatic GitHub token for cross-workflow artifact downloads | `deploy-lambda-agents`, `deploy-frontend` | `${{ secrets.GITHUB_TOKEN }}` |
 
 ---
 
@@ -192,10 +218,18 @@ Below is the complete, production-grade GitHub Actions workflow definition targe
 name: Continuous Deployment
 
 on:
-  push:
+  workflow_run:
+    workflows: ["Continuous Integration"]
+    types:
+      - completed
     branches:
       - main
   workflow_dispatch:
+    inputs:
+      run_id:
+        description: 'CI Workflow Run ID (optional, defaults to triggering/latest CI run)'
+        required: false
+        type: string
 
 concurrency:
   group: cd-main-${{ github.ref }}
@@ -212,6 +246,7 @@ jobs:
   terraform-plan-and-apply:
     name: Terraform Apply (${{ matrix.stack }})
     runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     timeout-minutes: 30
     strategy:
       fail-fast: true
@@ -288,6 +323,8 @@ jobs:
         with:
           name: lambda-agent-packages
           path: backend/
+          run-id: ${{ inputs.run_id || github.event.workflow_run.id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Setup Python & uv
         uses: astral-sh/setup-uv@v5
@@ -339,6 +376,8 @@ jobs:
         with:
           name: frontend-static-build
           path: frontend/out
+          run-id: ${{ inputs.run_id || github.event.workflow_run.id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Sync Static Frontend Artifacts to S3
         run: |
@@ -368,17 +407,17 @@ for dir in terraform/*/; do
   fi
 done
 
-# 2. Verify Lambda Packaging & Deployment Script Execution (Dry-run / Package check)
-cd backend && uv run deploy_all_lambdas.py --package
+# 2. Verify Lambda Deployment Script with Existing Zip Artifacts
+cd backend && uv run deploy_all_lambdas.py
 
-# 3. Verify Frontend Next.js Production Build
-cd frontend && npm ci && NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY="pk_test_sample" npm run build
+# 3. Verify Frontend Static Directory Sync Format
+test -d frontend/out && echo "Frontend build directory exists"
 ```
 
 ### 4.2 GitHub Actions Live Verification Checklist
 
-When triggering a CD pipeline run on `main` or via `workflow_dispatch`:
+When triggering a CD pipeline run via `workflow_run` (following CI on `main`) or `workflow_dispatch`:
 1. **OIDC Authentication Check**: Confirm `Configure AWS Credentials via OIDC` step successfully assumes `AWS_ROLE_ARN` without requesting long-lived AWS keys.
 2. **Terraform Matrix Audit**: Confirm all 7 Terraform stacks (`2_sagemaker` through `8_enterprise`) complete `terraform apply` cleanly in sequential order.
-3. **Lambda Agent Verification**: Confirm `deploy-lambda-agents` packages all 6 agent zip files + 1 scheduler zip file and completes deployment without error exit codes.
-4. **Frontend & CDN Audit**: Verify S3 sync uploads all build assets to `AWS_S3_FRONTEND_BUCKET` and CloudFront invalidation produces an `invalidation-id` with `Status: InProgress` or `Completed`.
+3. **Lambda Artifact Download & Deployment Audit**: Confirm `deploy-lambda-agents` downloads `lambda-agent-packages`, recognizes existing `.zip` files, skips re-packaging, taints Lambda functions, and completes deployment cleanly.
+4. **Frontend Artifact Download & CDN Audit**: Confirm `deploy-frontend` downloads `frontend-static-build` into `frontend/out/`, uploads static assets to `AWS_S3_FRONTEND_BUCKET`, and issues a successful CloudFront cache invalidation request (`Status: InProgress` or `Completed`).
