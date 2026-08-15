@@ -46,11 +46,12 @@ cd frontend && npm run lint && npm run build
 
 Project Alex manages production API key secrets centrally via **AWS Secrets Manager** (`alex/production/secrets`), eliminating static production secrets in GitHub repository settings or `.tfvars` files:
 
-1. **One-Time Setup Script**: Run the setup script to populate or update `alex/production/secrets` in your AWS account:
+- **Secrets Specification**: Defined in [docs/specs/infrastructure/secrets_management_spec.md](file:///Users/aponte/personal_workspace/agent_engineering_production_udemy.nosync/projects/alex/docs/specs/infrastructure/secrets_management_spec.md).
+- **One-Time Setup Script**: Run the setup script to populate or update `alex/production/secrets` in your AWS account:
    ```bash
    uv run scripts/populate_aws_secrets.py
    ```
-2. **Infrastructure & Application Integration**: Terraform stacks (`4_researcher`, `6_agents`, `7_frontend`) fetch secrets directly from AWS Secrets Manager at `apply` time via `data "aws_secretsmanager_secret_version"`, populating Lambda / App Runner environment variables seamlessly with zero Python code changes required.
+- **Infrastructure & Application Integration**: Terraform stacks (`4_researcher`, `6_agents`, `7_frontend`) fetch secrets directly from AWS Secrets Manager at `apply` time via `data "aws_secretsmanager_secret_version"`, populating Lambda / App Runner environment variables seamlessly with zero Python code changes required.
 
 #### Order of play:
 
