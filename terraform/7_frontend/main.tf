@@ -19,6 +19,20 @@ data "aws_caller_identity" "current" {}
 
 data "aws_region" "current" {}
 
+# Data source for production API keys from AWS Secrets Manager (alex/production/secrets)
+data "aws_secretsmanager_secret" "app_secrets" {
+  name = "alex/production/secrets"
+}
+
+data "aws_secretsmanager_secret_version" "app_secrets" {
+  secret_id = data.aws_secretsmanager_secret.app_secrets.id
+}
+
+locals {
+  app_secrets    = try(jsondecode(data.aws_secretsmanager_secret_version.app_secrets.secret_string), {})
+  clerk_jwks_url = var.clerk_jwks_url != null && var.clerk_jwks_url != "" ? var.clerk_jwks_url : lookup(local.app_secrets, "CLERK_JWKS_URL", "")
+}
+
 # Reference Part 5 Database resources
 data "terraform_remote_state" "database" {
   backend = "local"
@@ -214,7 +228,7 @@ resource "aws_lambda_function" "api" {
       SQS_QUEUE_URL = data.terraform_remote_state.agents.outputs.sqs_queue_url
 
       # Clerk configuration for JWT validation
-      CLERK_JWKS_URL = var.clerk_jwks_url
+      CLERK_JWKS_URL = local.clerk_jwks_url
       CLERK_ISSUER   = var.clerk_issuer
 
       # CORS configuration

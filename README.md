@@ -29,7 +29,7 @@ Project Alex utilizes the `docs/` directory—specifically `docs/specs/`—as an
 Project Alex includes a GitHub Actions Continuous Integration (CI) pipeline designed for rapid PR feedback and quality gate validation:
 
 - **CI Specification**: Defined in [docs/specs/infrastructure/github_ci_spec.md](file:///Users/aponte/personal_workspace/agent_engineering_production_udemy.nosync/projects/alex/docs/specs/infrastructure/github_ci_spec.md).
-- **Workflow Pipeline**: [.github/workflows/ci.yml](file:///Users/aponte/personal_workspace/agent_engineering_production_udemy.nosync/projects/alex/.github/workflows/ci.yml) executes 3 parallel jobs on pull requests targeting `main` and branch pushes (`lint-and-typecheck`, `backend-test-suite`, `frontend-build-check`). Infrastructure validation is managed in the CD deployment flow.
+- **Workflow Pipeline**: [.github/workflows/ci.yml](file:///Users/aponte/personal_workspace/agent_engineering_production_udemy.nosync/projects/alex/.github/workflows/ci.yml) executes quality checks and builds production release artifacts (`frontend-static-build` and `lambda-agent-packages`) uploaded via `actions/upload-artifact@v4`.
 - **Performance SLA**: Optimized with `uv`, `npm`, and Next.js build layer caching to complete in **< 120 seconds** (~65-75s average).
 
 #### Local Verification Commands
@@ -41,6 +41,17 @@ cd backend && uv run --with ruff ruff check . && uv run pytest tests/ -v
 # 2. Frontend Linting & Production Build
 cd frontend && npm run lint && npm run build
 ```
+
+### Production Secrets Management (AWS Secrets Manager)
+
+Project Alex manages production API key secrets centrally via **AWS Secrets Manager** (`alex/production/secrets`), eliminating static production secrets in GitHub repository settings or `.tfvars` files:
+
+- **Secrets Specification**: Defined in [docs/specs/infrastructure/secrets_management_spec.md](file:///Users/aponte/personal_workspace/agent_engineering_production_udemy.nosync/projects/alex/docs/specs/infrastructure/secrets_management_spec.md).
+- **One-Time Setup Script**: Run the setup script to populate or update `alex/production/secrets` in your AWS account:
+   ```bash
+   uv run scripts/populate_aws_secrets.py
+   ```
+- **Infrastructure & Application Integration**: Terraform stacks (`4_researcher`, `6_agents`, `7_frontend`) fetch secrets directly from AWS Secrets Manager at `apply` time via `data "aws_secretsmanager_secret_version"`, populating Lambda / App Runner environment variables seamlessly with zero Python code changes required.
 
 #### Order of play:
 

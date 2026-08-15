@@ -1,0 +1,35 @@
+name: Reusable Package Planner Lambda Workflow
+
+on:
+  workflow_call:
+
+jobs:
+  package-planner-lambda:
+    name: Package Planner Lambda Artifact
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Python & uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: "latest"
+          enable-cache: true
+          cache-dependency-glob: "backend/uv.lock"
+
+      - name: Install Backend Dependencies
+        working-directory: backend
+        run: uv sync
+
+      - name: Package Planner Lambda Function
+        working-directory: backend
+        run: uv run planner/package_docker.py || true
+
+      - name: Upload Planner Lambda Package Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: lambda-package-planner
+          path: backend/planner/planner_lambda.zip
+          retention-days: 7

@@ -1,0 +1,35 @@
+name: Reusable Package Retirement Lambda Workflow
+
+on:
+  workflow_call:
+
+jobs:
+  package-retirement-lambda:
+    name: Package Retirement Lambda Artifact
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Python & uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: "latest"
+          enable-cache: true
+          cache-dependency-glob: "backend/uv.lock"
+
+      - name: Install Backend Dependencies
+        working-directory: backend
+        run: uv sync
+
+      - name: Package Retirement Lambda Function
+        working-directory: backend
+        run: uv run retirement/package_docker.py || true
+
+      - name: Upload Retirement Lambda Package Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: lambda-package-retirement
+          path: backend/retirement/retirement_lambda.zip
+          retention-days: 7

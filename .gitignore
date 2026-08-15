@@ -234,3 +234,8 @@ backend/**/*_lambda.zip
 .idea
 .terraform.lock.hcl
 /terraform/4_researcher/researcher.auto.tfvars.json
+
+# One-time AWS Secrets Manager script & secret files
+scripts/populate_aws_secrets.py
+scripts/secrets.json
+.env.secrets

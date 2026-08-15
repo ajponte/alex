@@ -8,6 +8,7 @@ variable "aws_region" {
 variable "clerk_jwks_url" {
   description = "Clerk JWKS URL for JWT validation in Lambda"
   type        = string
+  default     = ""
 }
 
 variable "clerk_issuer" {

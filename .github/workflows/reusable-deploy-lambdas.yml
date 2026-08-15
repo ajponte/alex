@@ -1,0 +1,113 @@
+name: Reusable Deploy Lambdas Workflow
+
+on:
+  workflow_call:
+    inputs:
+      run_id:
+        description: 'CI Workflow Run ID (optional, defaults to triggering/latest CI run)'
+        required: false
+        type: string
+        default: ''
+    secrets:
+      AWS_ROLE_ARN:
+        required: false
+      AWS_REGION:
+        required: false
+      CLERK_JWKS_URL:
+        required: false
+      POLYGON_API_KEY:
+        required: false
+      OPENAI_API_KEY:
+        required: false
+      ALEX_API_KEY:
+        required: false
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  deploy-lambda-agents:
+    name: Deploy Lambda Agents & Subsystems
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials via OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ secrets.AWS_REGION || 'us-east-1' }}
+          role-session-name: Alex-CD-Lambda-Deploy
+
+      - name: Download Planner Lambda Package Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: lambda-package-planner
+          path: backend/planner
+          run-id: ${{ inputs.run_id || github.event.workflow_run.id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Download Tagger Lambda Package Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: lambda-package-tagger
+          path: backend/tagger
+          run-id: ${{ inputs.run_id || github.event.workflow_run.id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Download Reporter Lambda Package Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: lambda-package-reporter
+          path: backend/reporter
+          run-id: ${{ inputs.run_id || github.event.workflow_run.id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Download Charter Lambda Package Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: lambda-package-charter
+          path: backend/charter
+          run-id: ${{ inputs.run_id || github.event.workflow_run.id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Download Retirement Lambda Package Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: lambda-package-retirement
+          path: backend/retirement
+          run-id: ${{ inputs.run_id || github.event.workflow_run.id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Download Scheduler Lambda Package Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: lambda-package-scheduler
+          path: backend/scheduler
+          run-id: ${{ inputs.run_id || github.event.workflow_run.id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Python & uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: "latest"
+          enable-cache: true
+          cache-dependency-glob: "backend/uv.lock"
+
+      - name: Setup Terraform CLI
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.9.0"
+
+      - name: Install Backend Dependencies
+        working-directory: backend
+        run: uv sync
+
+      - name: Execute Lambda Deployment Script
+        working-directory: backend
+        env:
+          TF_VAR_aws_region: ${{ secrets.AWS_REGION || 'us-east-1' }}
+        run: uv run deploy_all_lambdas.py
