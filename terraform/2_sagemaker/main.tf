@@ -20,6 +20,11 @@ provider "aws" {
 data "aws_caller_identity" "current" {}
 
 # IAM role for SageMaker
+import {
+  to = aws_iam_role.sagemaker_role
+  id = "alex-sagemaker-role"
+}
+
 resource "aws_iam_role" "sagemaker_role" {
   name = "alex-sagemaker-role"
 

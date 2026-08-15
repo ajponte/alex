@@ -105,6 +105,12 @@ resource "aws_s3_bucket_policy" "frontend" {
   depends_on = [aws_s3_bucket_public_access_block.frontend]
 }
 
+# IAM role for API Lambda
+import {
+  to = aws_iam_role.api_lambda_role
+  id = "alex-api-lambda-role"
+}
+
 # IAM role for Lambda API function
 resource "aws_iam_role" "api_lambda_role" {
   name = "${local.name_prefix}-api-lambda-role"
