@@ -10,11 +10,19 @@ _If you're looking at this in Cursor, please right click on the filename in the 
 
 #### The directories:
 
-1. **guides** - this is where you will live - step by step guides to deploy to production
-2. **backend** - the agent code, organized into subdirectories, each a uv project (as is the backend parent directory)
-3. **frontend** - a NextJS React frontend integrated with Clerk
-4. **terraform** - separate terraform subdirectories with state for each part
-5. **scripts** - the final deployment script
+1. **guides** - step-by-step deployment guides to deploy to production
+2. **docs** - system documentation and the `docs/specs/` LLM Agent Harness for specification-driven development
+3. **backend** - the agent code, organized into subdirectories, each a uv project (as is the backend parent directory)
+4. **frontend** - a NextJS React frontend integrated with Clerk
+5. **terraform** - separate terraform subdirectories with state for each part
+6. **scripts** - deployment and utility scripts
+
+### LLM Agent Harness (`docs/`)
+
+Project Alex utilizes the `docs/` directory—specifically `docs/specs/`—as an **LLM Agent Document Harness**.
+
+- **System Context Guide**: [docs/About.md](file:///Users/aponte/personal_workspace/agent_engineering_production_udemy.nosync/projects/alex/docs/About.md) provides high-density architectural context, component linkages, multi-agent topologies, and environment variable requirements for AI assistants.
+- **Specification Harness**: [docs/specs/](file:///Users/aponte/personal_workspace/agent_engineering_production_udemy.nosync/projects/alex/docs/specs/) establishes machine-readable, single-source-of-truth technical contracts for database schemas, agent SDK contracts, API DTOs, and infrastructure automation. AI agents inspect and follow these specs before executing codebase changes.
 
 #### Order of play:
 
