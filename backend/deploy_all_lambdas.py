@@ -40,6 +40,12 @@ def taint_and_deploy_via_terraform() -> bool:
     # Lambda function names to taint in Part 6
     lambda_functions = ['planner', 'tagger', 'reporter', 'charter', 'retirement']
     
+    print("🔧 Initializing Terraform provider plugins...")
+    subprocess.run(['terraform', 'init', '-input=false'], cwd=terraform_dir, capture_output=True)
+    if researcher_tf_dir.exists():
+        subprocess.run(['terraform', 'init', '-input=false'], cwd=researcher_tf_dir, capture_output=True)
+
+    print()
     print("📌 Step 1: Tainting Agent Orchestra Lambda functions to force recreation...")
     print("-" * 50)
     

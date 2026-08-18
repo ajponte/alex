@@ -46,12 +46,41 @@ jobs:
           run-id: ${{ inputs.run_id || github.event.workflow_run.id }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Resolve S3 Bucket & CloudFront Distribution Targets
+        id: resolve-targets
+        run: |
+          # Resolve S3 Bucket
+          BUCKET="${{ secrets.AWS_S3_FRONTEND_BUCKET }}"
+          if [ -z "$BUCKET" ] || [ "$BUCKET" = "None" ]; then
+            echo "Searching AWS for frontend S3 bucket..."
+            BUCKET=$(aws s3api list-buckets --query "Buckets[?starts_with(Name, 'alex-frontend-')].Name | [0]" --output text)
+          fi
+          echo "s3_bucket=$BUCKET" >> $GITHUB_OUTPUT
+
+          # Resolve CloudFront Distribution ID
+          DIST_ID="${{ secrets.CLOUDFRONT_DISTRIBUTION_ID }}"
+          if [ -z "$DIST_ID" ] || [ "$DIST_ID" = "None" ]; then
+            echo "Searching AWS for CloudFront distribution ID..."
+            DIST_ID=$(aws cloudfront list-distributions --query "DistributionList.Items[?contains(Origins.Items[0].DomainName, 'alex-frontend')].Id | [0]" --output text)
+          fi
+          echo "cloudfront_id=$DIST_ID" >> $GITHUB_OUTPUT
+
       - name: Sync Static Frontend Artifacts to S3
         run: |
-          aws s3 sync frontend/out/ s3://${{ secrets.AWS_S3_FRONTEND_BUCKET }} --delete
+          BUCKET="${{ steps.resolve-targets.outputs.s3_bucket }}"
+          if [ -z "$BUCKET" ] || [ "$BUCKET" = "None" ]; then
+            echo "❌ Error: Could not resolve S3 bucket for Alex frontend deployment."
+            exit 1
+          fi
+          echo "Syncing static frontend to s3://$BUCKET ..."
+          aws s3 sync frontend/out/ s3://$BUCKET --delete
 
       - name: Invalidate CloudFront CDN Cache
         run: |
-          aws cloudfront create-invalidation \
-            --distribution-id ${{ secrets.CLOUDFRONT_DISTRIBUTION_ID }} \
-            --paths "/*"
+          DIST_ID="${{ steps.resolve-targets.outputs.cloudfront_id }}"
+          if [ -z "$DIST_ID" ] || [ "$DIST_ID" = "None" ]; then
+            echo "⚠️ Warning: No CloudFront distribution ID found. Skipping invalidation."
+          else
+            echo "Creating CloudFront invalidation for distribution: $DIST_ID"
+            aws cloudfront create-invalidation --distribution-id "$DIST_ID" --paths "/*"
+          fi
