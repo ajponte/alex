@@ -24,16 +24,9 @@ permissions:
   contents: read
 
 jobs:
-  terraform-apply:
-    name: Terraform Provisioning
-    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
-    uses: ./.github/workflows/reusable-terraform-apply.yml
-    secrets: inherit
-
   deploy-lambdas:
     name: Lambda Agent Deployment
     if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
-    needs: terraform-apply
     uses: ./.github/workflows/reusable-deploy-lambdas.yml
     with:
       run_id: ${{ inputs.run_id || (github.event_name == 'workflow_run' && github.event.workflow_run.id) || '' }}
@@ -42,7 +35,6 @@ jobs:
   deploy-frontend:
     name: Frontend Application Deployment
     if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
-    needs: terraform-apply
     uses: ./.github/workflows/reusable-deploy-frontend.yml
     with:
       run_id: ${{ inputs.run_id || (github.event_name == 'workflow_run' && github.event.workflow_run.id) || '' }}

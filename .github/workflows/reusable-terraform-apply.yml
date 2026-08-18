@@ -23,6 +23,7 @@ permissions:
 jobs:
   terraform-plan-and-apply:
     name: Terraform Apply (${{ matrix.stack }})
+    environment: production
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
