@@ -1,9 +1,10 @@
-# Specification: Continuous Deployment (CD) Workflow & Production Infrastructure Release 🚀
+# Specification: Decoupled Continuous Deployment (CD) & Production Infrastructure Release 🚀
 
 ## Status: APPROVED
 **Module**: `infrastructure / cd / github_actions`  
 **Target Files**:
 - [.github/workflows/cd.yml](file:///Users/aponte/personal_workspace/agent_engineering_production_udemy/projects/alex/.github/workflows/cd.yml)
+- [.github/workflows/terraform-infra.yml](file:///Users/aponte/personal_workspace/agent_engineering_production_udemy/projects/alex/.github/workflows/terraform-infra.yml)
 - [.github/workflows/reusable-terraform-apply.yml](file:///Users/aponte/personal_workspace/agent_engineering_production_udemy/projects/alex/.github/workflows/reusable-terraform-apply.yml)
 - [.github/workflows/reusable-deploy-lambdas.yml](file:///Users/aponte/personal_workspace/agent_engineering_production_udemy/projects/alex/.github/workflows/reusable-deploy-lambdas.yml)
 - [.github/workflows/reusable-deploy-frontend.yml](file:///Users/aponte/personal_workspace/agent_engineering_production_udemy/projects/alex/.github/workflows/reusable-deploy-frontend.yml)
@@ -22,18 +23,23 @@
 
 ## 1. Executive Summary & Objectives
 
-This specification defines the production-grade Continuous Deployment (CD) pipeline architecture for Project Alex using a **composable Reusable Workflow (`workflow_call`) design**. The CD workflow orchestrates automated infrastructure provisioning across multi-stack Terraform modules, containerized Lambda agent deployments, Next.js frontend asset delivery to AWS S3, and CloudFront CDN cache invalidations following successful Continuous Integration (CI) runs on the `main` branch or via manual dispatch.
+This specification defines the production-grade **Decoupled Infrastructure Stack Gated Deployment Architecture** for Project Alex using a **composable Reusable Workflow (`workflow_call`) design**.
+
+Under this decoupled architecture:
+1. **Application CD (`cd.yml`)**: Fast-tracks routine code releases (Lambdas & Frontend) directly to existing infrastructure without running Terraform state checks or risk of accidental infrastructure mutation. Routine deployments complete in **under 3 minutes**.
+2. **Infrastructure Provisioning (`terraform-infra.yml`)**: Infrastructure stack matrix provisioning (`2_sagemaker` through `8_enterprise`) is completely decoupled into a manual workflow gated behind mandatory human approval via `environment: production`.
+3. **Complete Removal of `deploy_infra`**: The legacy `deploy_infra` boolean input option has been completely removed from [.github/workflows/cd.yml](file:///Users/aponte/personal_workspace/agent_engineering_production_udemy/projects/alex/.github/workflows/cd.yml).
 
 ### Key Objectives & Architectural Principles:
-1. **Composable Reusable CD Architecture**: Deconstructs production release steps into modular reusable workflows (`reusable-terraform-apply.yml`, `reusable-deploy-lambdas.yml`, and `reusable-deploy-frontend.yml`) invoked by the parent orchestration workflow (`cd.yml`).
-2. **Automated Continuous Deployment Trigger Scope**: Automatically triggers deployment following successful completion of the CI workflow ([docs/specs/infrastructure/github_ci_spec.md](file:///Users/aponte/personal_workspace/agent_engineering_production_udemy/projects/alex/docs/specs/infrastructure/github_ci_spec.md)) on `main` via `workflow_run` events, or on-demand via manual `workflow_dispatch`.
-3. **Passwordless AWS Authentication (OIDC)**: Integrates GitHub Actions OpenID Connect (OIDC) identity provider federation (`aws-actions/configure-aws-credentials`) using IAM role assumption (`role-to-assume: ${{ secrets.AWS_ROLE_ARN }}`), eliminating long-lived access key secrets.
-4. **Terraform Stack Matrix Provisioning**: Executes `terraform fmt -check`, `terraform init`, `terraform validate`, and `terraform apply -auto-approve` sequentially across all active Terraform modules (`2_sagemaker` through `8_enterprise`) inside `reusable-terraform-apply.yml`.
-5. **Consuming Pre-Packaged Lambda Artifacts**: Downloads the 6 individual Lambda package artifacts (`lambda-package-planner`, `lambda-package-tagger`, `lambda-package-reporter`, `lambda-package-charter`, `lambda-package-retirement`, `lambda-package-scheduler`) into their respective `backend/` subdirectories and invokes [backend/deploy_all_lambdas.py](file:///Users/aponte/personal_workspace/agent_engineering_production_udemy/projects/alex/backend/deploy_all_lambdas.py) **without** the `--package` flag inside `reusable-deploy-lambdas.yml`.
-6. **Consuming Pre-Built Frontend Artifacts & CDN Invalidation**: Downloads pre-compiled `frontend-static-build` export artifacts directly into `frontend/out/`, synchronizes static assets to S3 (`aws s3 sync`), and invalidates CloudFront distributions (`aws cloudfront create-invalidation`) inside `reusable-deploy-frontend.yml`.
+1. **Decoupled Continuous Deployment Architecture**: Cleanly separates fast-track application code delivery ([`cd.yml`](file:///Users/aponte/personal_workspace/agent_engineering_production_udemy/projects/alex/.github/workflows/cd.yml)) from human-gated infrastructure provisioning ([`terraform-infra.yml`](file:///Users/aponte/personal_workspace/agent_engineering_production_udemy/projects/alex/.github/workflows/terraform-infra.yml)).
+2. **Automated Application CD Scope**: Automatically triggers code deployment following successful completion of the CI workflow ([docs/specs/infrastructure/github_ci_spec.md](file:///Users/aponte/personal_workspace/agent_engineering_production_udemy/projects/alex/docs/specs/infrastructure/github_ci_spec.md)) on `main` via `workflow_run` events, or on-demand via manual `workflow_dispatch`.
+3. **Protected Infrastructure Environment Gate**: Terraform stack matrix provisioning (`2_sagemaker` through `8_enterprise`) inside [`reusable-terraform-apply.yml`](file:///Users/aponte/personal_workspace/agent_engineering_production_udemy/projects/alex/.github/workflows/reusable-terraform-apply.yml) requires manual review and approval bound to `environment: production`.
+4. **Passwordless AWS Authentication (OIDC)**: Integrates GitHub Actions OpenID Connect (OIDC) identity provider federation (`aws-actions/configure-aws-credentials`) using IAM role assumption (`role-to-assume: ${{ secrets.AWS_ROLE_ARN }}`), eliminating long-lived access key secrets.
+5. **Consuming Pre-Packaged Lambda Artifacts**: Downloads the 6 individual Lambda package artifacts (`lambda-package-planner`, `lambda-package-tagger`, `lambda-package-reporter`, `lambda-package-charter`, `lambda-package-retirement`, `lambda-package-scheduler`) into their respective `backend/` subdirectories and invokes [backend/deploy_all_lambdas.py](file:///Users/aponte/personal_workspace/agent_engineering_production_udemy/projects/alex/backend/deploy_all_lambdas.py) **without** the `--package` flag inside [`reusable-deploy-lambdas.yml`](file:///Users/aponte/personal_workspace/agent_engineering_production_udemy/projects/alex/.github/workflows/reusable-deploy-lambdas.yml).
+6. **Consuming Pre-Built Frontend Artifacts & CDN Invalidation**: Downloads pre-compiled `frontend-static-build` export artifacts directly into `frontend/out/`, synchronizes static assets to S3 (`aws s3 sync`), and invalidates CloudFront distributions (`aws cloudfront create-invalidation`) inside [`reusable-deploy-frontend.yml`](file:///Users/aponte/personal_workspace/agent_engineering_production_udemy/projects/alex/.github/workflows/reusable-deploy-frontend.yml).
 
 > [!IMPORTANT]
-> Infrastructure deployment safety is governed by non-preemptive concurrency locks (`cancel-in-progress: false`). Ongoing `terraform apply` operations are never aborted mid-execution, protecting state backends against lock corruption.
+> Infrastructure deployment safety is governed by non-preemptive concurrency locks (`cancel-in-progress: false`). Ongoing `terraform apply` operations are never aborted mid-execution, protecting S3 state backends against lock corruption.
 
 ---
 
@@ -41,7 +47,8 @@ This specification defines the production-grade Continuous Deployment (CD) pipel
 
 ### 2.1 Workflow Triggers & Artifact Inheritance Mechanism
 
-The parent CD pipeline ([.github/workflows/cd.yml](file:///Users/aponte/personal_workspace/agent_engineering_production_udemy/projects/alex/.github/workflows/cd.yml)) triggers automatically upon successful completion of the Continuous Integration (CI) pipeline on the `main` branch, or via manual dispatch from the GitHub Actions UI:
+#### 1. Continuous Deployment Workflow (`cd.yml`)
+Triggers automatically upon successful completion of the Continuous Integration (CI) pipeline on the `main` branch, or via manual dispatch from the GitHub Actions UI:
 
 ```yaml
 on:
@@ -57,6 +64,21 @@ on:
         description: 'CI Workflow Run ID (optional, defaults to triggering/latest CI run)'
         required: false
         type: string
+        default: ''
+```
+
+#### 2. Terraform Infrastructure Provisioning Workflow (`terraform-infra.yml`)
+Triggers strictly via manual dispatch from the GitHub Actions UI:
+
+```yaml
+on:
+  workflow_dispatch:
+    inputs:
+      stacks:
+        description: 'Terraform Stacks to Apply (all stacks 2_sagemaker through 8_enterprise)'
+        required: false
+        type: string
+        default: 'all'
 ```
 
 #### CI Artifact Inheritance Protocol:
@@ -100,34 +122,40 @@ permissions:
 
 ---
 
-## 3. Composable CD Reusable Workflows Architecture
+## 3. Decoupled CD & Infrastructure Architecture
 
-The CD pipeline delegates tasks across **3 reusable workflows**:
+The pipeline decouples application deployment from infrastructure provisioning:
 
 ```mermaid
 graph TD
-    A["Trigger: CI workflow_run (success on main) / workflow_dispatch"] --> B["cd.yml Orchestrator"]
-    B --> C["reusable-terraform-apply.yml"]
-    C -->|"Matrix: 2_sagemaker .. 8_enterprise"| D{"Terraform Stacks Applied Successfully?"}
-    D -->|"Yes"| E["reusable-deploy-lambdas.yml"]
-    D -->|"Yes"| F["reusable-deploy-frontend.yml"]
-    E -->|"Download 6 individual Lambda package artifacts into backend/"| G["Deploy via deploy_all_lambdas.py (Without --package)"]
-    F -->|"Download frontend-static-build artifact into frontend/out"| H["AWS S3 Sync + CloudFront CDN Invalidation"]
+    subgraph "Continuous Deployment Workflow (cd.yml)"
+        A1["Trigger: Push to main (workflow_run)<br>OR Manual Dispatch"] --> A2["Deploy Lambdas directly<br>(reusable-deploy-lambdas.yml)"]
+        A1 --> A3["Deploy Frontend directly<br>(reusable-deploy-frontend.yml)"]
+        A2 --> A4["Fast-Track Code Deployment Complete<br>(under 3 minutes)"]
+        A3 --> A4
+    end
+
+    subgraph "Infrastructure Provisioning Workflow (terraform-infra.yml)"
+        B1["Trigger: workflow_dispatch<br>(Manual Trigger)"] --> B2["Request Approval:<br>environment: production"]
+        B2 -->|"Reviewer Rejects"| B3["Cancel terraform-apply<br>& Abort Workflow"]
+        B2 -->|"Reviewer Approves"| B4["Execute terraform-apply Matrix<br>(2_sagemaker .. 8_enterprise)"]
+        B4 --> B5["Infrastructure Provisioning Complete"]
+    end
 ```
 
-#### CD Job Interface Matrix:
+#### Workflow Interface Matrix:
 
-| Parent Job ID | Reusable Workflow Target | Responsibility & Scope | Primary Command / CLI | Dependencies (`needs`) |
+| Workflow File | Parent Job ID | Reusable Target | Responsibility & Scope | Approval Gate / Dependencies |
 | :--- | :--- | :--- | :--- | :--- |
-| `terraform-apply` | `reusable-terraform-apply.yml` | Matrix provisioning across Terraform stacks (`2_sagemaker` through `8_enterprise`) | `terraform fmt -check`<br>`terraform init`<br>`terraform validate`<br>`terraform apply -auto-approve` | *None (Initial Quality Gate)* |
-| `deploy-lambdas` | `reusable-deploy-lambdas.yml` | Lambda resource recreation & deployment using 6 individual CI pre-packaged `.zip` artifacts | `actions/download-artifact@v4`<br>`uv run deploy_all_lambdas.py` | `terraform-apply` |
-| `deploy-frontend` | `reusable-deploy-frontend.yml` | Static asset synchronization to S3 & CloudFront cache invalidation using CI pre-built artifacts | `actions/download-artifact@v4`<br>`aws s3 sync frontend/out/ s3://${{ secrets.AWS_S3_FRONTEND_BUCKET }} --delete`<br>`aws cloudfront create-invalidation` | `terraform-apply` |
+| **`cd.yml`** | `deploy-lambdas` | `reusable-deploy-lambdas.yml` | Lambda resource recreation & deployment using 6 pre-packaged `.zip` artifacts | None (Fast-track) |
+| **`cd.yml`** | `deploy-frontend` | `reusable-deploy-frontend.yml` | Static asset synchronization to S3 & CloudFront CDN invalidation | None (Fast-track) |
+| **`terraform-infra.yml`** | `terraform-apply` | `reusable-terraform-apply.yml` | Matrix provisioning across Terraform stacks (`2_sagemaker` through `8_enterprise`) | `environment: production` |
 
 ---
 
-## 3. Implementation Plan & Declarative Workflows
+## 4. Implementation Plan & Declarative Workflows
 
-### 3.1 Parent Orchestrator Workflow: `.github/workflows/cd.yml`
+### 4.1 Parent Orchestrator Workflow: `.github/workflows/cd.yml`
 
 ```yaml
 name: Continuous Deployment
@@ -156,16 +184,9 @@ permissions:
   contents: read
 
 jobs:
-  terraform-apply:
-    name: Terraform Provisioning
-    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
-    uses: ./.github/workflows/reusable-terraform-apply.yml
-    secrets: inherit
-
   deploy-lambdas:
     name: Lambda Agent Deployment
     if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
-    needs: terraform-apply
     uses: ./.github/workflows/reusable-deploy-lambdas.yml
     with:
       run_id: ${{ inputs.run_id || (github.event_name == 'workflow_run' && github.event.workflow_run.id) || '' }}
@@ -174,14 +195,43 @@ jobs:
   deploy-frontend:
     name: Frontend Application Deployment
     if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
-    needs: terraform-apply
     uses: ./.github/workflows/reusable-deploy-frontend.yml
     with:
       run_id: ${{ inputs.run_id || (github.event_name == 'workflow_run' && github.event.workflow_run.id) || '' }}
     secrets: inherit
 ```
 
-### 3.2 Reusable Workflow: `.github/workflows/reusable-terraform-apply.yml`
+### 4.2 Decoupled Infrastructure Workflow: `.github/workflows/terraform-infra.yml`
+
+```yaml
+name: Terraform Infrastructure Provisioning
+
+on:
+  workflow_dispatch:
+    inputs:
+      stacks:
+        description: 'Terraform Stacks to Apply (all stacks 2_sagemaker through 8_enterprise)'
+        required: false
+        type: string
+        default: 'all'
+
+concurrency:
+  group: terraform-infra-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  terraform-apply:
+    name: Provision Infrastructure Stacks
+    environment: production
+    uses: ./.github/workflows/reusable-terraform-apply.yml
+    secrets: inherit
+```
+
+### 4.3 Reusable Workflow: `.github/workflows/reusable-terraform-apply.yml`
 
 ```yaml
 name: Reusable Terraform Apply Workflow
@@ -209,6 +259,7 @@ permissions:
 jobs:
   terraform-plan-and-apply:
     name: Terraform Apply (${{ matrix.stack }})
+    environment: production
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
@@ -259,7 +310,7 @@ jobs:
         run: terraform apply -auto-approve
 ```
 
-### 3.3 Reusable Workflow: `.github/workflows/reusable-deploy-lambdas.yml`
+### 4.4 Reusable Workflow: `.github/workflows/reusable-deploy-lambdas.yml`
 
 ```yaml
 name: Reusable Deploy Lambdas Workflow
@@ -377,7 +428,7 @@ jobs:
         run: uv run deploy_all_lambdas.py
 ```
 
-### 3.4 Reusable Workflow: `.github/workflows/reusable-deploy-frontend.yml`
+### 4.5 Reusable Workflow: `.github/workflows/reusable-deploy-frontend.yml`
 
 ```yaml
 name: Reusable Deploy Frontend Workflow
@@ -441,11 +492,11 @@ jobs:
 
 ---
 
-## 4. Verification & Testing Requirements
+## 5. Verification & Testing Requirements
 
-### 4.1 Pre-deployment Local Verification Commands
+### 5.1 Pre-deployment Local Verification Commands
 
-Before committing workflow updates, engineers and AI agents can execute equivalent local verification commands:
+Before triggering workflows, engineers and AI agents can execute equivalent local verification commands:
 
 ```bash
 # 1. Verify Terraform Formatting & Validation across Stacks
@@ -463,10 +514,18 @@ cd backend && uv run deploy_all_lambdas.py
 test -d frontend/out && echo "Frontend build directory exists"
 ```
 
-### 4.2 GitHub Actions Live Verification Checklist
+### 5.2 GitHub Actions Live Verification Checklist
 
-When triggering a CD pipeline run via `workflow_run` (following CI on `main`) or `workflow_dispatch`:
-1. **OIDC Authentication Check**: Confirm `Configure AWS Credentials via OIDC` step successfully assumes `AWS_ROLE_ARN` without requesting long-lived AWS keys.
-2. **Terraform Matrix Audit**: Confirm all 7 Terraform stacks (`2_sagemaker` through `8_enterprise`) complete `terraform apply` cleanly in sequential order inside `reusable-terraform-apply.yml`.
-3. **Lambda Artifact Download & Deployment Audit**: Confirm `deploy-lambda-agents` in `reusable-deploy-lambdas.yml` downloads all 6 individual Lambda package artifacts (`lambda-package-planner`, `lambda-package-tagger`, `lambda-package-reporter`, `lambda-package-charter`, `lambda-package-retirement`, `lambda-package-scheduler`) into their respective `backend/` subdirectories, recognizes existing `.zip` files, skips re-packaging, taints Lambda functions, and completes deployment cleanly.
-4. **Frontend Artifact Download & CDN Audit**: Confirm `deploy-frontend` in `reusable-deploy-frontend.yml` downloads `frontend-static-build` into `frontend/out/`, uploads static assets to `AWS_S3_FRONTEND_BUCKET`, and issues a successful CloudFront cache invalidation request (`Status: InProgress` or `Completed`).
+1. **Automatic Application CD (`cd.yml`)**:
+   - Triggers automatically when CI on `main` completes with `success`.
+   - Executes `deploy-lambdas` and `deploy-frontend` directly in parallel.
+   - Completes in **under 3 minutes**.
+   - No Terraform state checks or approval gates requested.
+2. **Manual Application CD (`cd.yml`)**:
+   - Triggerable via `workflow_dispatch` with optional `run_id`.
+   - `deploy_infra` input parameter is completely absent.
+3. **Infrastructure Provisioning Gate (`terraform-infra.yml`)**:
+   - Triggered via `workflow_dispatch`.
+   - Execution pauses at `production` gate awaiting manual approval.
+   - Rejection safely cancels the job without applying state changes.
+   - Approval executes `terraform apply` sequentially across matrix stacks `2_sagemaker` through `8_enterprise`.

@@ -540,62 +540,25 @@ cd terraform/2_sagemaker && terraform destroy
 
 ---
 
-## Key Files Students Modify
-
-### Configuration Files
-- `.env` - Root environment variables (add values as guides progress)
-- `frontend/.env.local` - Frontend Clerk configuration
-- `terraform/*/terraform.tfvars` - Each terraform directory (copy from .example)
-
-### Code Students May Need to Update
-- `backend/researcher/server.py` - Region and model configuration (Guide 4) - but this should come from variables and shouldn't need code changes
-- Agent templates in `backend/*/templates.py` - For customization
-- Frontend pages for UI modifications
-
----
-
-## Getting Help
-
-### For Students
-
-If you're stuck:
-
-1. **Check the guide carefully** - Most steps have troubleshooting sections
-2. **Review error messages** - Look at CloudWatch logs, not just terminal output
-3. **Verify prerequisites** - Is Docker running? Are permissions set? Is terraform.tfvars configured?
-4. **Contact the instructor**:
-   - **Post a question in Udemy** - Include your guide number, error message, and what you've tried
-   - **Email Ed Donner**: ed@edwarddonner.com
-
-When asking for help, include:
-- Which guide/day you're on
-- Exact error message (copy/paste, don't paraphrase)
-- What command you ran
-- Relevant CloudWatch logs if available
-- What you've already tried
-
-### For Claude Code (AI Assistant)
-
-When helping students:
-
-0. **Prepare** - Read all the guides to be fully briefed.
-1. **Establish context** - Which guide? What's the goal?
-2. **Get error details** - Actual messages, logs, console output
-3. **Diagnose first** - Don't write code before understanding the problem
-4. **Think incrementally** - One change at a time
-5. **Verify understanding** - Explain what you think is wrong before fixing
-6. **Keep it simple** - Avoid over-engineering solutions
-
-**Remember**: Students are learning. The goal is to help them understand what went wrong and how to fix it, not just to make the error go away.
-
----
-
 ### Course Context
 - Instructor: Ed Donner
 - Platform: Udemy
 - Course: AI in Production
 - Project: "Alex" - Capstone for Weeks 3-4
 
+
 ---
 
-*This guide was created to help AI assistants (like Claude Code) effectively support students through the Alex project. Last updated: October 2025*
+# Persona & Personality
+- You are a precise, production-focused Senior Full-Stack Engineer.
+- Maintain a concise, professional, and direct communication style.
+- Always prioritize security guidelines and robust error handling over quick fixes.
+
+---
+
+### LLM Agent Harness (`docs/`)
+
+Project Alex utilizes the `docs/` directory—specifically `docs/specs/`—as an **LLM Agent Document Harness**.
+
+- **System Context Guide**: [docs/About.md](file:///Users/aponte/personal_workspace/agent_engineering_production_udemy.nosync/projects/alex/docs/About.md) provides high-density architectural context, component linkages, multi-agent topologies, and environment variable requirements for AI assistants.
+- **Specification Harness**: [docs/specs/](file:///Users/aponte/personal_workspace/agent_engineering_production_udemy.nosync/projects/alex/docs/specs/) establishes machine-readable, single-source-of-truth technical contracts for database schemas, agent SDK contracts, API DTOs, and infrastructure automation. AI agents inspect and follow these specs before executing codebase changes.

@@ -1,0 +1,25 @@
+name: Terraform Infrastructure Provisioning
+
+on:
+  workflow_dispatch:
+    inputs:
+      stacks:
+        description: 'Terraform Stacks to Apply (all stacks 2_sagemaker through 8_enterprise)'
+        required: false
+        type: string
+        default: 'all'
+
+concurrency:
+  group: terraform-infra-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  terraform-apply:
+    name: Provision Infrastructure Stacks
+    environment: production
+    uses: ./.github/workflows/reusable-terraform-apply.yml
+    secrets: inherit
