@@ -95,7 +95,8 @@ on:
    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
    ```
    Deployments are blocked if the triggering CI run failed.
-3. **Artifact Retrieval**: Artifacts are fetched in reusable deployment workflows using `actions/download-artifact@v4` with explicit `run-id` binding (`run-id: ${{ inputs.run_id || github.event.workflow_run.id }}`) and `github-token: ${{ secrets.GITHUB_TOKEN }}`.
+3. **Automatic CI Run ID Resolution**: The CD workflow executes an initial `resolve-ci-artifact` job that inspects `inputs.run_id` and `github.event.workflow_run.id`. If both are empty (e.g. manual `workflow_dispatch` trigger without an explicit `run_id`), it uses `gh run list --repo ${{ github.repository }} --workflow "ci.yml" --branch main --status success --limit 1 --json databaseId -q ".[0].databaseId"` to fetch the latest successful CI run ID on branch `main`.
+4. **Artifact Retrieval**: Artifacts are fetched in reusable deployment workflows using `actions/download-artifact@v4` with explicit `run-id` binding (`run-id: ${{ needs.resolve-ci-artifact.outputs.ci_run_id }}`) and `github-token: ${{ secrets.GITHUB_TOKEN }}`.
 
 ### 2.2 AWS IAM OIDC Authentication Protocol
 
@@ -184,20 +185,49 @@ permissions:
   contents: read
 
 jobs:
+  resolve-ci-artifact:
+    name: Resolve CI Run ID
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    outputs:
+      ci_run_id: ${{ steps.set-run-id.outputs.ci_run_id }}
+    steps:
+      - name: Resolve CI Workflow Run ID
+        id: set-run-id
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          INPUT_RUN_ID: ${{ inputs.run_id }}
+          WORKFLOW_RUN_ID: ${{ github.event.workflow_run.id }}
+        run: |
+          if [ -n "$INPUT_RUN_ID" ]; then
+            echo "Using manual input run_id: $INPUT_RUN_ID"
+            echo "ci_run_id=$INPUT_RUN_ID" >> $GITHUB_OUTPUT
+          elif [ -n "$WORKFLOW_RUN_ID" ]; then
+            echo "Using workflow_run ID: $WORKFLOW_RUN_ID"
+            echo "ci_run_id=$WORKFLOW_RUN_ID" >> $GITHUB_OUTPUT
+          else
+            echo "Fetching latest successful CI run ID on main branch..."
+            RESOLVED_ID=$(gh run list --repo "${{ github.repository }}" --workflow "ci.yml" --branch main --status success --limit 1 --json databaseId -q ".[0].databaseId")
+            echo "Resolved CI run ID: $RESOLVED_ID"
+            echo "ci_run_id=$RESOLVED_ID" >> $GITHUB_OUTPUT
+          fi
+
   deploy-lambdas:
     name: Lambda Agent Deployment
+    needs: resolve-ci-artifact
     if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     uses: ./.github/workflows/reusable-deploy-lambdas.yml
     with:
-      run_id: ${{ inputs.run_id || (github.event_name == 'workflow_run' && github.event.workflow_run.id) || '' }}
+      run_id: ${{ needs.resolve-ci-artifact.outputs.ci_run_id }}
     secrets: inherit
 
   deploy-frontend:
     name: Frontend Application Deployment
+    needs: resolve-ci-artifact
     if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     uses: ./.github/workflows/reusable-deploy-frontend.yml
     with:
-      run_id: ${{ inputs.run_id || (github.event_name == 'workflow_run' && github.event.workflow_run.id) || '' }}
+      run_id: ${{ needs.resolve-ci-artifact.outputs.ci_run_id }}
     secrets: inherit
 ```
 
